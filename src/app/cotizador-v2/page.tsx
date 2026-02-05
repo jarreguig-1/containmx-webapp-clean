@@ -2719,6 +2719,9 @@ function ProyectoGanadoCard({
   const pagosClienteUSD = calcTotalsUSD(
     movimientos.filter((m) => m.tipo === "abono" && m.categoria === "pagoCliente" && m.estado === "pagado")
   );
+  const pagosClientePendUSD = calcTotalsUSD(
+    movimientos.filter((m) => m.tipo === "abono" && m.categoria === "pagoCliente" && m.estado === "porPagar")
+  );
   const porCobrarClienteUSD = round2(Math.max(0, totalCotizacionConIvaUSD - pagosClienteUSD));
   const ivaAcreditableUSD = calcTotalsUSD(movimientos.filter((m) => m.categoria === "ivaImportacion"));
   const ivaTrasladadoUSD = calcIvaUSD(movimientos.filter((m) => m.tipo === "abono" && m.incluyeIva));
@@ -2971,7 +2974,7 @@ function ProyectoGanadoCard({
         <StatCard
           title="Por cobrar cliente"
           value={`${fmtUSD(porCobrarClienteUSD)} `}
-          sub={`Total con IVA: ${fmtUSD(totalCotizacionConIvaUSD)}`}
+          sub={`Pagado: ${fmtUSD(pagosClienteUSD)} · Por pagar: ${fmtUSD(pagosClientePendUSD)} · Total con IVA: ${fmtUSD(totalCotizacionConIvaUSD)}`}
         />
         <StatCard
           title="Utilidad final"
@@ -4756,7 +4759,7 @@ export default function ContainMX() {
                   igi: igiUSD,
                   dta: dtaUSD,
                   agenteAduanal: agenteAduanalUSDTotal,
-                  maniobras: maniobrasPuertoUSD,
+                  maniobras: maniobrasPuertoUSDTotal,
                   honorarios: pagoAsesorTotalUSD,
                   instalacion: 0,
                   comisionOmar: omarCommissionUSD,
