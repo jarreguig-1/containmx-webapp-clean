@@ -140,6 +140,8 @@ interface ProyectoState {
     agenteAduanal: number;
     maniobras: number;
     honorarios: number;
+    instalacion: number;
+    comisionOmar: number;
   };
 }
 
@@ -194,6 +196,7 @@ type MovimientoCategoria =
   | "agenteAduanal"
   | "maniobras"
   | "honorarios"
+  | "comisionOmar"
   | "pagoCliente"
   | "ivaImportacion"
   | "retiroUtilidad"
@@ -546,6 +549,8 @@ function defaultProyectoState(): ProyectoState {
       agenteAduanal: 0,
       maniobras: 0,
       honorarios: 0,
+      instalacion: 0,
+      comisionOmar: 0,
     },
   };
 }
@@ -2647,10 +2652,12 @@ function ProyectoGanadoCard({
   s,
   setS,
   totalVentaUSD,
+  costosDefaults,
 }: {
   s: ProyectoState;
   setS: (patch: Partial<ProyectoState>) => void;
   totalVentaUSD: number;
+  costosDefaults: ProyectoState["costosControl"];
 }) {
   const movimientos = Array.isArray(s.movimientos) ? s.movimientos : [];
   const [montoDraft, setMontoDraft] = useState<Record<string, string>>({});
@@ -2727,6 +2734,8 @@ function ProyectoGanadoCard({
     ["agenteAduanal", "Agente aduanal"],
     ["maniobras", "Maniobras"],
     ["honorarios", "Honorarios asesor"],
+    ["instalacion", "Instalación"],
+    ["comisionOmar", "Comisión Omar"],
   ] as Array<[keyof ProyectoState["costosControl"], string]>;
   const pagosPorCategoriaUSD = (categoria: MovimientoCategoria, estado?: MovimientoEstado) =>
     calcTotalsUSD(
@@ -2737,6 +2746,16 @@ function ProyectoGanadoCard({
   const proveedorMetaUSD = (s.costosControl?.productos ?? 0) as number;
   const proveedorPagadoProductosUSD = pagosPorCategoriaUSD("productos", "pagado");
   const proveedorRestanteProductosUSD = round2(proveedorMetaUSD - proveedorPagadoProductosUSD);
+  const defaultsKey = JSON.stringify(costosDefaults || {});
+
+  useEffect(() => {
+    const current = s.costosControl || ({} as ProyectoState["costosControl"]);
+    const hasMissing = Object.keys(costosDefaults || {}).some((k) => (current as any)[k] === undefined);
+    const allZero = Object.values(current || {}).every((v) => !v);
+    if (hasMissing || allZero) {
+      setS({ costosControl: { ...costosDefaults, ...current } });
+    }
+  }, [defaultsKey]);
 
   return (
     <section style={card}>
@@ -2839,6 +2858,7 @@ function ProyectoGanadoCard({
                       <option value="agenteAduanal">Agente aduanal</option>
                       <option value="maniobras">Maniobras</option>
                       <option value="honorarios">Honorarios asesor</option>
+                      <option value="comisionOmar">Comisión Omar</option>
                       <option value="pagoCliente">Pago cliente</option>
                       <option value="ivaImportacion">IVA importación</option>
                       <option value="importacion">Importación</option>
@@ -4662,7 +4682,24 @@ export default function ContainMX() {
           ) : null}
 
           {step === "proyectoGanado" ? (
-              <ProyectoGanadoCard s={sSafe} setS={setS} totalVentaUSD={totalPrecioUSD} />
+              <ProyectoGanadoCard
+                s={sSafe}
+                setS={setS}
+                totalVentaUSD={totalPrecioUSD}
+                costosDefaults={{
+                  productos: valorProductosUSD,
+                  fleteMaritimo: fleteMaritimoUSD,
+                  fleteTerrestre: fleteTerrestreUSD,
+                  seguro: seguroUSD,
+                  igi: igiUSD,
+                  dta: dtaUSD,
+                  agenteAduanal: agenteAduanalUSD,
+                  maniobras: maniobrasPuertoUSD,
+                  honorarios: pagoAsesorTotalUSD,
+                  instalacion: 0,
+                  comisionOmar: omarCommissionUSD,
+                }}
+              />
           ) : null}
 
           {step === "centroControl" ? (
