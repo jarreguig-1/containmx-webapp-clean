@@ -128,6 +128,19 @@ interface ProyectoState {
 
   // Líneas
   lineas: Linea[];
+
+  // Control editable de costos (USD) en proyectos ganados
+  costosControl: {
+    productos: number;
+    fleteMaritimo: number;
+    fleteTerrestre: number;
+    seguro: number;
+    igi: number;
+    dta: number;
+    agenteAduanal: number;
+    maniobras: number;
+    honorarios: number;
+  };
 }
 
 interface Proyecto {
@@ -172,6 +185,15 @@ function estatusLabel(s: ProyectoStatus) {
 type MovimientoTipo = "cargo" | "abono";
 type MovimientoMoneda = "USD" | "MXN";
 type MovimientoCategoria =
+  | "productos"
+  | "fleteMaritimo"
+  | "fleteTerrestre"
+  | "seguro"
+  | "igi"
+  | "dta"
+  | "agenteAduanal"
+  | "maniobras"
+  | "honorarios"
   | "importacion"
   | "instalacion"
   | "proveedor"
@@ -511,6 +533,17 @@ function defaultProyectoState(): ProyectoState {
     precioOverrides: {},
     costoOverrides: {},
     lineas: [],
+    costosControl: {
+      productos: 0,
+      fleteMaritimo: 0,
+      fleteTerrestre: 0,
+      seguro: 0,
+      igi: 0,
+      dta: 0,
+      agenteAduanal: 0,
+      maniobras: 0,
+      honorarios: 0,
+    },
   };
 }
 
@@ -550,6 +583,9 @@ function normalizeProjects(input: any[]): Proyecto[] {
       ...(stateIn as any),
       lineas,
     };
+    if (!(state as any).costosControl) {
+      state.costosControl = { ...baseState.costosControl };
+    }
 
     return { id, meta, state } as Proyecto;
   });
@@ -680,6 +716,26 @@ function calcMovTotalsFx(list: MovimientoFin[]) {
       return acc;
     },
     { usd: 0, mxn: 0 }
+  );
+}
+
+function movToUSD(m: MovimientoFin) {
+  if (m.moneda === "USD") return m.monto || 0;
+  return m.tcPago && m.tcPago > 0 ? round2((m.monto || 0) / m.tcPago) : 0;
+}
+
+function calcTotalsUSD(list: MovimientoFin[]) {
+  return round2(list.reduce((acc, m) => acc + movToUSD(m), 0));
+}
+
+function calcIvaUSD(list: MovimientoFin[]) {
+  return round2(
+    list.reduce((acc, m) => {
+      if (!m.incluyeIva) return acc;
+      const iva = round2((m.monto || 0) * IVA_RATE);
+      const ivaUsd = m.moneda === "USD" ? iva : (m.tcPago && m.tcPago > 0 ? round2(iva / m.tcPago) : 0);
+      return acc + ivaUsd;
+    }, 0)
   );
 }
 
@@ -2637,8 +2693,18 @@ function ProyectoGanadoCard({
   const totalAbonos = calcTotal(movimientos.filter((m) => m.tipo === "abono"));
   const utilidadFinal = { usd: round2(totalAbonos.usd - totalCargos.usd), mxn: round2(totalAbonos.mxn - totalCargos.mxn) };
   const saldoFx = calcMovTotalsFx(movimientos);
+  const porPagarUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar"));
+  const porRecibirUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "abono" && m.estado === "porPagar"));
+  const cargosUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo"));
+  const abonosUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "abono"));
+  const saldoUSD = round2(abonosUSD - cargosUSD);
+  const ivaCargosUSD = calcIvaUSD(movimientos.filter((m) => m.tipo === "cargo"));
+  const ivaAbonosUSD = calcIvaUSD(movimientos.filter((m) => m.tipo === "abono"));
+  const ivaSaldoUSD = round2(ivaAbonosUSD - ivaCargosUSD);
   const proveedorPorPagar = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar" && m.categoria === "proveedor"));
   const proveedorPagado = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && m.categoria === "proveedor"));
+  const proveedorPorPagarUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar" && m.categoria === "proveedor"));
+  const proveedorPagadoUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && m.categoria === "proveedor"));
 
   return (
     <section style={card}>
@@ -2732,6 +2798,15 @@ function ProyectoGanadoCard({
                       onChange={(e) => updateMov(m.id, { categoria: e.target.value as MovimientoCategoria })}
                       style={{ ...selectCss, width: 150 }}
                     >
+                      <option value="productos">Productos</option>
+                      <option value="fleteMaritimo">Flete marítimo</option>
+                      <option value="fleteTerrestre">Flete terrestre</option>
+                      <option value="seguro">Seguro</option>
+                      <option value="igi">IGI</option>
+                      <option value="dta">DTA</option>
+                      <option value="agenteAduanal">Agente aduanal</option>
+                      <option value="maniobras">Maniobras</option>
+                      <option value="honorarios">Honorarios asesor</option>
                       <option value="importacion">Importación</option>
                       <option value="instalacion">Instalación</option>
                       <option value="proveedor">Proveedor</option>
@@ -2832,32 +2907,74 @@ function ProyectoGanadoCard({
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
         <StatCard
           title="Por pagar"
-          value={`${fmtUSD(porPagar.usd)} / ${fmtMXN(porPagar.mxn)}`}
+          value={`${fmtUSD(porPagarUSD)} `}
           sub="Cargos pendientes"
         />
         <StatCard
           title="Por recibir"
-          value={`${fmtUSD(porRecibir.usd)} / ${fmtMXN(porRecibir.mxn)}`}
+          value={`${fmtUSD(porRecibirUSD)} `}
           sub="Abonos pendientes"
         />
         <StatCard
           title="Utilidad final"
-          value={`${fmtUSD(saldoFx.usd)} / ${fmtMXN(saldoFx.mxn)}`}
-          sub="Saldo neto (abonos - cargos)"
+          value={`${fmtUSD(saldoUSD)} `}
+          sub="Saldo neto USD (abonos - cargos)"
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
         <StatCard
           title="Proveedor por pagar"
-          value={`${fmtUSD(proveedorPorPagar.usd)} / ${fmtMXN(proveedorPorPagar.mxn)}`}
+          value={`${fmtUSD(proveedorPorPagarUSD)} `}
           sub="Cargos proveedor pendientes"
         />
         <StatCard
           title="Proveedor pagado"
-          value={`${fmtUSD(proveedorPagado.usd)} / ${fmtMXN(proveedorPagado.mxn)}`}
+          value={`${fmtUSD(proveedorPagadoUSD)} `}
           sub="Cargos proveedor pagados"
         />
+        <StatCard
+          title="Saldo IVA"
+          value={`${fmtUSD(ivaSaldoUSD)} `}
+          sub="IVA abonos - IVA cargos"
+        />
+      </div>
+
+      <div style={{ height: 12 }} />
+      <div style={{ border: `1px solid ${tokens.border}`, borderRadius: 12, padding: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <div style={{ fontWeight: 800 }}>Desglose de costos (USD) editable</div>
+          <div style={{ fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>
+            Para control contra pagos
+          </div>
+        </div>
+        <div style={{ height: 10 }} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+          {([
+            ["productos", "Productos"],
+            ["fleteMaritimo", "Flete marítimo"],
+            ["fleteTerrestre", "Flete terrestre"],
+            ["seguro", "Seguro"],
+            ["igi", "IGI"],
+            ["dta", "DTA"],
+            ["agenteAduanal", "Agente aduanal"],
+            ["maniobras", "Maniobras"],
+            ["honorarios", "Honorarios asesor"],
+          ] as Array<[keyof ProyectoState["costosControl"], string]>).map(([key, label]) => (
+            <Field key={key} label={label}>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={fmtUSDInput((s.costosControl?.[key] ?? 0) as number)}
+                onChange={(e) => {
+                  const parsed = parseNumericInput(e.target.value);
+                  setS({ costosControl: { ...s.costosControl, [key]: Number.isFinite(parsed) ? parsed : 0 } });
+                }}
+                style={{ ...inputCss, textAlign: "right" }}
+              />
+            </Field>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -3389,6 +3506,17 @@ export default function ContainMX() {
         precioOverrides: {},
         costoOverrides: {},
         lineas: [],
+        costosControl: {
+          productos: 0,
+          fleteMaritimo: 0,
+          fleteTerrestre: 0,
+          seguro: 0,
+          igi: 0,
+          dta: 0,
+          agenteAduanal: 0,
+          maniobras: 0,
+          honorarios: 0,
+        },
       },
     };
     const next = [nuevo, ...projects];
