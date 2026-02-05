@@ -3095,6 +3095,7 @@ export default function ContainMX() {
   // Draft de inputs de costo editable (permite borrar y teclear sin que “rebote” al valor calculado)
   const [costoOverrideDraft, setCostoOverrideDraft] = useState<Record<string, string>>({});
   const [precioManual, setPrecioManual] = useState(false);
+  const [showGanadosList, setShowGanadosList] = useState(false);
   const remoteSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRemoteSaveRef = React.useRef<{ projects: Proyecto[]; currentId: string | null } | null>(null);
 
@@ -4058,37 +4059,70 @@ export default function ContainMX() {
                 </option>
               ))}
             </select>
-            <div style={{ display: "grid", gap: 6 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: tokens.textMuted }}>Proyectos ganados</div>
-              <div style={{ maxHeight: 88, overflowY: "auto", border: `1px solid ${tokens.border}`, borderRadius: 10, padding: 6, minWidth: 200, background: tokens.surface }}>
-                {!proyectosGanados.length ? (
-                  <div style={{ fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>Sin ganados</div>
-                ) : (
-                  <div style={{ display: "grid", gap: 6 }}>
-                    {proyectosGanados.map((p) => (
-                      <button
-                        key={p.id}
-                        style={{
-                          ...btnGhost,
-                          padding: "6px 8px",
-                          textAlign: "left",
-                          fontSize: 12,
-                          fontWeight: 800,
-                          background: p.id === currentSafeId ? "#eef2ff" : undefined,
-                          borderColor: p.id === currentSafeId ? "#c7d2fe" : tokens.border,
-                        }}
-                        onClick={() => {
-                          setCurrentId(p.id);
-                          setStep("proyectoGanado");
-                          window.scrollTo({ top: 0, behavior: "smooth" });
-                        }}
-                      >
-                        {p.meta?.nombre || "Proyecto"}
-                      </button>
-                    ))}
+            <div style={{ position: "relative" }}>
+              <button
+                style={{ ...btnGhost, padding: "8px 12px", fontWeight: 800 }}
+                onClick={() => setShowGanadosList((v) => !v)}
+              >
+                Proyectos ganados ({proyectosGanados.length})
+              </button>
+              {showGanadosList ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "110%",
+                    left: 0,
+                    zIndex: 50,
+                    width: 320,
+                    maxHeight: 240,
+                    overflowY: "auto",
+                    border: `1px solid ${tokens.border}`,
+                    borderRadius: 12,
+                    background: tokens.surface,
+                    boxShadow: tokens.shadowMd,
+                    padding: 10,
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 800, color: tokens.textMuted, marginBottom: 8 }}>
+                    Proyectos ganados
                   </div>
-                )}
-              </div>
+                  {!proyectosGanados.length ? (
+                    <div style={{ fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>Sin ganados</div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {proyectosGanados.map((p) => {
+                        const unidades = (p.state?.lineas || []).reduce((acc, l) => acc + (l.cantidad || 0), 0);
+                        return (
+                          <button
+                            key={p.id}
+                            style={{
+                              ...btnGhost,
+                              padding: "8px 10px",
+                              textAlign: "left",
+                              display: "grid",
+                              gap: 4,
+                              borderRadius: 10,
+                              background: p.id === currentSafeId ? "#eef2ff" : undefined,
+                              borderColor: p.id === currentSafeId ? "#c7d2fe" : tokens.border,
+                            }}
+                            onClick={() => {
+                              setCurrentId(p.id);
+                              setStep("proyectoGanado");
+                              setShowGanadosList(false);
+                              window.scrollTo({ top: 0, behavior: "smooth" });
+                            }}
+                          >
+                            <div style={{ fontSize: 13, fontWeight: 900 }}>{p.meta?.nombre || "Proyecto"}</div>
+                            <div style={{ fontSize: 11, color: tokens.textMuted, fontWeight: 700 }}>
+                              {estatusLabel(p.state?.estatusProyecto || "anticipoProveedor")} · {unidades} uds
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
             {savedAt ? (
               <span style={{ fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>
