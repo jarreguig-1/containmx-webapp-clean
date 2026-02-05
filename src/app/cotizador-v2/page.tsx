@@ -199,6 +199,7 @@ type MovimientoCategoria =
   | "honorarios"
   | "comisionOmar"
   | "pagoCliente"
+  | "iva"
   | "ivaImportacion"
   | "retiroUtilidad"
   | "importacion"
@@ -215,6 +216,7 @@ interface MovimientoFin {
   tipo: MovimientoTipo;
   estado: MovimientoEstado;
   incluyeIva: boolean;
+  ivaManual?: number;
   categoria: MovimientoCategoria;
   descripcion: string;
   monto: number;
@@ -741,6 +743,11 @@ function calcTotalsUSD(list: MovimientoFin[]) {
 function calcIvaUSD(list: MovimientoFin[]) {
   return round2(
     list.reduce((acc, m) => {
+      if (Number.isFinite(m.ivaManual)) {
+        const manual = m.ivaManual as number;
+        const ivaUsd = m.moneda === "USD" ? manual : (m.tcPago && m.tcPago > 0 ? round2(manual / m.tcPago) : 0);
+        return acc + ivaUsd;
+      }
       if (m.categoria === "ivaImportacion") {
         const ivaUsd = m.moneda === "USD" ? (m.monto || 0) : (m.tcPago && m.tcPago > 0 ? round2((m.monto || 0) / m.tcPago) : 0);
         return acc + ivaUsd;
@@ -2761,6 +2768,10 @@ function ProyectoGanadoCard({
   const proveedorMetaUSD = (s.costosControl?.productos ?? 0) as number;
   const proveedorPagadoProductosUSD = pagosPorCategoriaUSD("productos", "pagado");
   const proveedorRestanteProductosUSD = round2(proveedorMetaUSD - proveedorPagadoProductosUSD);
+  const cargosPagadosUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado"));
+  const abonosPagadosUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "abono" && m.estado === "pagado"));
+  const saldoPagadoUSD = round2(abonosPagadosUSD - cargosPagadosUSD);
+  const saldoPendienteUSD = round2(porCobrarClienteUSD - porPagarUSD);
   const movimientosOrdenados = [...movimientos].sort((a, b) => {
     if (a.estado !== b.estado) return a.estado === "pagado" ? -1 : 1;
     const da = a.fecha ? new Date(a.fecha).getTime() : 0;
@@ -2881,6 +2892,7 @@ function ProyectoGanadoCard({
                       <option value="honorarios">Honorarios asesor</option>
                       <option value="comisionOmar">Comisión Omar</option>
                       <option value="pagoCliente">Pago cliente</option>
+                      <option value="iva">IVA</option>
                       <option value="ivaImportacion">IVA importación</option>
                       <option value="importacion">Importación</option>
                       <option value="instalacion">Instalación</option>
@@ -2932,7 +2944,21 @@ function ProyectoGanadoCard({
                     />
                   </Td>
                   <Td style={{ textAlign: "right", fontWeight: 700 }}>
-                    {m.incluyeIva ? fmtUSD(round2(((m.monto || 0) * IVA_RATE) / (1 + IVA_RATE)), false) : "—"}
+                    {m.categoria === "iva" || m.categoria === "ivaImportacion" ? (
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={Number.isFinite(m.ivaManual) ? fmtUSDInput(m.ivaManual as number) : ""}
+                        onChange={(e) => {
+                          const parsed = parseNumericInput(e.target.value);
+                          updateMov(m.id, { ivaManual: Number.isFinite(parsed) ? parsed : 0 });
+                        }}
+                        placeholder="IVA"
+                        style={{ ...inputCss, width: 110, textAlign: "right" }}
+                      />
+                    ) : (
+                      m.incluyeIva ? fmtUSD(round2(((m.monto || 0) * IVA_RATE) / (1 + IVA_RATE)), false) : "—"
+                    )}
                   </Td>
                   <Td style={{ textAlign: "right", fontWeight: 800 }}>
                     {fmtUSD(m.monto || 0, false)}
@@ -2993,8 +3019,8 @@ function ProyectoGanadoCard({
         />
         <StatCard
           title="Utilidad final"
-          value={`${fmtUSD(saldoUSD)} `}
-          sub="Saldo neto USD (abonos - cargos)"
+          value={`${fmtUSD(saldoPendienteUSD)} `}
+          sub={`Saldo recibido - pagado: ${fmtUSD(saldoPagadoUSD)}`}
         />
       </div>
 
