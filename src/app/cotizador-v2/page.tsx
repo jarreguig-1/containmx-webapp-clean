@@ -194,6 +194,7 @@ type MovimientoCategoria =
   | "agenteAduanal"
   | "maniobras"
   | "honorarios"
+  | "retiroUtilidad"
   | "importacion"
   | "instalacion"
   | "proveedor"
@@ -2705,6 +2706,26 @@ function ProyectoGanadoCard({
   const proveedorPagado = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && m.categoria === "proveedor"));
   const proveedorPorPagarUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar" && m.categoria === "proveedor"));
   const proveedorPagadoUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && m.categoria === "proveedor"));
+  const costosList = [
+    ["productos", "Productos"],
+    ["fleteMaritimo", "Flete marítimo"],
+    ["fleteTerrestre", "Flete terrestre"],
+    ["seguro", "Seguro"],
+    ["igi", "IGI"],
+    ["dta", "DTA"],
+    ["agenteAduanal", "Agente aduanal"],
+    ["maniobras", "Maniobras"],
+    ["honorarios", "Honorarios asesor"],
+  ] as Array<[keyof ProyectoState["costosControl"], string]>;
+  const pagosPorCategoriaUSD = (categoria: MovimientoCategoria, estado?: MovimientoEstado) =>
+    calcTotalsUSD(
+      movimientos.filter(
+        (m) => m.tipo === "cargo" && m.categoria === categoria && (!estado || m.estado === estado)
+      )
+    );
+  const proveedorMetaUSD = (s.costosControl?.productos ?? 0) as number;
+  const proveedorPagadoProductosUSD = pagosPorCategoriaUSD("productos", "pagado");
+  const proveedorRestanteProductosUSD = round2(proveedorMetaUSD - proveedorPagadoProductosUSD);
 
   return (
     <section style={card}>
@@ -2810,6 +2831,7 @@ function ProyectoGanadoCard({
                       <option value="importacion">Importación</option>
                       <option value="instalacion">Instalación</option>
                       <option value="proveedor">Proveedor</option>
+                      <option value="retiroUtilidad">Retiro utilidad</option>
                       <option value="logistica">Logística</option>
                       <option value="impuestos">Impuestos</option>
                       <option value="otros">Otros</option>
@@ -2939,6 +2961,9 @@ function ProyectoGanadoCard({
           sub="IVA abonos - IVA cargos"
         />
       </div>
+      <div style={{ marginTop: 8, fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>
+        Pagos a proveedor (Productos): Meta {fmtUSD(proveedorMetaUSD)} · Pagado {fmtUSD(proveedorPagadoProductosUSD)} · Restante {fmtUSD(proveedorRestanteProductosUSD)}
+      </div>
 
       <div style={{ height: 12 }} />
       <div style={{ border: `1px solid ${tokens.border}`, borderRadius: 12, padding: 12 }}>
@@ -2950,30 +2975,30 @@ function ProyectoGanadoCard({
         </div>
         <div style={{ height: 10 }} />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-          {([
-            ["productos", "Productos"],
-            ["fleteMaritimo", "Flete marítimo"],
-            ["fleteTerrestre", "Flete terrestre"],
-            ["seguro", "Seguro"],
-            ["igi", "IGI"],
-            ["dta", "DTA"],
-            ["agenteAduanal", "Agente aduanal"],
-            ["maniobras", "Maniobras"],
-            ["honorarios", "Honorarios asesor"],
-          ] as Array<[keyof ProyectoState["costosControl"], string]>).map(([key, label]) => (
+          {costosList.map(([key, label]) => {
+            const planeado = (s.costosControl?.[key] ?? 0) as number;
+            const pagado = pagosPorCategoriaUSD(key, "pagado");
+            const porPagar = pagosPorCategoriaUSD(key, "porPagar");
+            const restante = round2(planeado - pagado);
+            return (
             <Field key={key} label={label}>
               <input
                 type="text"
                 inputMode="decimal"
-                value={fmtUSDInput((s.costosControl?.[key] ?? 0) as number)}
+                value={fmtUSDInput(planeado)}
                 onChange={(e) => {
                   const parsed = parseNumericInput(e.target.value);
                   setS({ costosControl: { ...s.costosControl, [key]: Number.isFinite(parsed) ? parsed : 0 } });
                 }}
                 style={{ ...inputCss, textAlign: "right" }}
               />
+              <div style={{ marginTop: 6, fontSize: 11, color: tokens.textMuted, display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span>Pagado: {fmtUSD(pagado)}</span>
+                <span>Por pagar: {fmtUSD(porPagar)}</span>
+                <span>Saldo: {fmtUSD(restante)}</span>
+              </div>
             </Field>
-          ))}
+          )})}
         </div>
       </div>
     </section>
