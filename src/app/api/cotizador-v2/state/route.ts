@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 const STATE_ID = "cotizador-v2";
 
-let pool: Pool | null = null;
+let pool: any = null;
 
 function getConnectionString() {
   return (
