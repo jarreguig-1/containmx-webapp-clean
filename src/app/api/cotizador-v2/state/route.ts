@@ -10,6 +10,11 @@ let pool: Pool | null = null;
 
 function getConnectionString() {
   return (
+    process.env.DB_DATABASE_URL ||
+    process.env.DB_DATABASE_URL_UNPOOLED ||
+    process.env.DB_POSTGRES_URL ||
+    process.env.DB_POSTGRES_URL_NON_POOLING ||
+    process.env.DB_POSTGRES_URL_NO_SSL ||
     process.env.DATABASE_URL ||
     process.env.DATABASE_URL_UNPOOLED ||
     process.env.NEON_DATABASE_URL ||
