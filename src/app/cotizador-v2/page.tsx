@@ -1448,6 +1448,19 @@ function LineasCompactTable({
                           onChange={(e) => {
                             const val = e.target.value;
                             setDraftCost((d) => ({ ...d, [key]: val }));
+                            const raw = val.toString();
+                            if (raw.trim() === "") {
+                              setLineas((lineas || []).map((x) =>
+                                x.id === l.id ? { ...x, costoProveedor: undefined } : x
+                              ));
+                              return;
+                            }
+                            const parsed = parseNumericInput(raw);
+                            if (Number.isFinite(parsed)) {
+                              setLineas((lineas || []).map((x) =>
+                                x.id === l.id ? { ...x, costoProveedor: parsed } : x
+                              ));
+                            }
                           }}
                           onBlur={(e) => {
                             const raw = (e.currentTarget.value ?? "").toString();
