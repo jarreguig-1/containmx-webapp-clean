@@ -3313,6 +3313,7 @@ export default function ContainMX() {
       id,
       meta: { nombre: "Nuevo proyecto", contacto: "", ubicacion: "", razonSocial: "", createdAt: now },
       state: {
+        ganado: false,
         tipoCambio: 0,
         modulosPorContenedor: 14,
         costoMaritimoUSD: 2500,
