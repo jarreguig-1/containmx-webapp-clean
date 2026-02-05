@@ -744,7 +744,9 @@ function calcIvaUSD(list: MovimientoFin[]) {
         return acc + ivaUsd;
       }
       if (!m.incluyeIva) return acc;
-      const iva = round2((m.monto || 0) * IVA_RATE);
+      // If monto already includes IVA, extract it from the total
+      const base = m.monto || 0;
+      const iva = round2((base * IVA_RATE) / (1 + IVA_RATE));
       const ivaUsd = m.moneda === "USD" ? iva : (m.tcPago && m.tcPago > 0 ? round2(iva / m.tcPago) : 0);
       return acc + ivaUsd;
     }, 0)
@@ -2752,6 +2754,12 @@ function ProyectoGanadoCard({
   const proveedorMetaUSD = (s.costosControl?.productos ?? 0) as number;
   const proveedorPagadoProductosUSD = pagosPorCategoriaUSD("productos", "pagado");
   const proveedorRestanteProductosUSD = round2(proveedorMetaUSD - proveedorPagadoProductosUSD);
+  const movimientosOrdenados = [...movimientos].sort((a, b) => {
+    if (a.estado !== b.estado) return a.estado === "pagado" ? -1 : 1;
+    const da = a.fecha ? new Date(a.fecha).getTime() : 0;
+    const db = b.fecha ? new Date(b.fecha).getTime() : 0;
+    return db - da;
+  });
   const defaultsKey = JSON.stringify(costosDefaults || {});
 
   useEffect(() => {
@@ -2819,7 +2827,7 @@ function ProyectoGanadoCard({
               </tr>
             </thead>
             <tbody>
-              {movimientos.map((m) => (
+              {movimientosOrdenados.map((m) => (
                 <tr key={m.id}>
                   <Td>
                     <input
@@ -2917,7 +2925,7 @@ function ProyectoGanadoCard({
                     />
                   </Td>
                   <Td style={{ textAlign: "right", fontWeight: 700 }}>
-                    {m.incluyeIva ? fmtUSD(round2((m.monto || 0) * IVA_RATE), false) : "—"}
+                    {m.incluyeIva ? fmtUSD(round2(((m.monto || 0) * IVA_RATE) / (1 + IVA_RATE)), false) : "—"}
                   </Td>
                   <Td style={{ textAlign: "right", fontWeight: 800 }}>
                     {fmtUSD(m.monto || 0, false)}
