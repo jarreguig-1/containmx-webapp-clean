@@ -1090,7 +1090,6 @@ function Stepper({
     { key: "cotizacion", title: "4) Cotización", desc: "Cotización cliente" },
     { key: "pagos", title: "5) Pagos", desc: "Calendario de pagos" },
     { key: "proyectoGanado", title: "6) Ganado", desc: "Proyecto ganado" },
-    { key: "centroControl", title: "7) Centro", desc: "Centro de control" },
   ];
 
   const wrap: React.CSSProperties = { display: "grid", gap: 8, marginTop: 14 };
@@ -2620,7 +2619,7 @@ function ProyectoGanadoCard({
 
       <div style={{ height: 10 }} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr auto", gap: 12, alignItems: "center" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 12, alignItems: "center" }}>
         <Field label="Estatus del proyecto">
           <select
             value={s.estatusProyecto}
@@ -2638,14 +2637,6 @@ function ProyectoGanadoCard({
         <div style={{ fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>
           Registra cargos/abonos y estatus para alimentar el dashboard.
         </div>
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 800 }}>
-          <input
-            type="checkbox"
-            checked={!!s.ganado}
-            onChange={(e) => setS({ ganado: e.target.checked })}
-          />
-          Marcar como ganado
-        </label>
       </div>
 
       <div style={{ height: 12 }} />
@@ -3458,6 +3449,15 @@ export default function ContainMX() {
   const ccTotalCargos = calcMovTotals(movimientosGanados.filter((m) => m.tipo === "cargo"));
   const ccTotalAbonos = calcMovTotals(movimientosGanados.filter((m) => m.tipo === "abono"));
   const ccUtilidad = { usd: round2(ccTotalAbonos.usd - ccTotalCargos.usd), mxn: round2(ccTotalAbonos.mxn - ccTotalCargos.mxn) };
+  const toggleGanado = (checked: boolean) => {
+    if (!current) return;
+    setS({ ganado: checked });
+    if (checked) {
+      setStep("proyectoGanado");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      setTimeout(() => setStep("centroControl"), 400);
+    }
+  };
 
   // ==================== Cálculos/Hooks deben correr SIEMPRE (evita error de hooks) ====================
   // Usa un state seguro para cálculos cuando aún no hay proyecto seleccionado.
@@ -4027,6 +4027,7 @@ export default function ContainMX() {
             ) : null}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <button style={btnGhost} onClick={() => setStep("centroControl")}>Centro de control</button>
             <button style={btnPrimary} onClick={newProject}>+ Proyecto</button>
             <button style={btn} onClick={duplicateProject}>Duplicar</button>
             <button style={btn} onClick={() => { if (confirm("¿Eliminar este proyecto?")) deleteProject(); }}>Eliminar</button>
@@ -4191,6 +4192,14 @@ export default function ContainMX() {
                         onChange={(e) => setPrecioManual(e.target.checked)}
                       />
                       Precio manual
+                    </label>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>
+                      <input
+                        type="checkbox"
+                        checked={!!sSafe.ganado}
+                        onChange={(e) => toggleGanado(e.target.checked)}
+                      />
+                      Proyecto ganado
                     </label>
                     <div style={{ fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>
                       Margen neto: {avgMarginNetPct.toFixed(2)}% · Descuento: {s?.descuentoPct ?? 0}%
@@ -4362,7 +4371,19 @@ export default function ContainMX() {
           ) : null}
 
           {step === "pagos" ? (
-            <CalendarioPagosCard s={sSafe} setS={setS} totalVentaUSD={totalPrecioUSD} rows={rows} meta={current?.meta as ProyectoMeta} />
+            <>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>
+                  <input
+                    type="checkbox"
+                    checked={!!sSafe.ganado}
+                    onChange={(e) => toggleGanado(e.target.checked)}
+                  />
+                  Proyecto ganado
+                </label>
+              </div>
+              <CalendarioPagosCard s={sSafe} setS={setS} totalVentaUSD={totalPrecioUSD} rows={rows} meta={current?.meta as ProyectoMeta} />
+            </>
           ) : null}
 
           {step === "proyectoGanado" ? (
