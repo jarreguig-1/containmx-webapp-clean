@@ -2711,7 +2711,11 @@ function ProyectoGanadoCard({
   const utilidadFinal = { usd: round2(totalAbonos.usd - totalCargos.usd), mxn: round2(totalAbonos.mxn - totalCargos.mxn) };
   const saldoFx = calcMovTotalsFx(movimientos);
   const porPagarUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar"));
-  const cargosUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo"));
+  const cargosUSD = calcTotalsUSD(
+    movimientos.filter(
+      (m) => !(m.tipo === "cargo" && m.categoria === "productos" && m.estado === "pagado")
+    )
+  );
   const abonosUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "abono"));
   const saldoUSD = round2(abonosUSD - cargosUSD);
   const ivaCargosUSD = calcIvaUSD(movimientos.filter((m) => m.tipo === "cargo"));
@@ -2996,11 +3000,6 @@ function ProyectoGanadoCard({
           title="Proveedor por pagar"
           value={`${fmtUSD(proveedorPorPagarUSD)} `}
           sub="Cargos proveedor pendientes"
-        />
-        <StatCard
-          title="Proveedor pagado"
-          value={`${fmtUSD(proveedorPagadoUSD)} `}
-          sub="Cargos proveedor pagados"
         />
         <StatCard
           title="Saldo IVA"
