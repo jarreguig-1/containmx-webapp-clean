@@ -142,6 +142,7 @@ interface ProyectoState {
     honorarios: number;
     instalacion: number;
     comisionOmar: number;
+    ivaImportacion: number;
   };
 }
 
@@ -551,6 +552,7 @@ function defaultProyectoState(): ProyectoState {
       honorarios: 0,
       instalacion: 0,
       comisionOmar: 0,
+      ivaImportacion: 0,
     },
   };
 }
@@ -2748,6 +2750,7 @@ function ProyectoGanadoCard({
     ["honorarios", "Honorarios asesor"],
     ["instalacion", "Instalación"],
     ["comisionOmar", "Comisión Omar"],
+    ["ivaImportacion", "IVA importación"],
   ] as Array<[keyof ProyectoState["costosControl"], string]>;
   const pagosPorCategoriaUSD = (categoria: MovimientoCategoria, estado?: MovimientoEstado) =>
     calcTotalsUSD(
@@ -3646,6 +3649,7 @@ export default function ContainMX() {
           honorarios: 0,
           instalacion: 0,
           comisionOmar: 0,
+          ivaImportacion: 0,
         },
       },
     };
@@ -4770,6 +4774,7 @@ export default function ContainMX() {
                   honorarios: pagoAsesorTotalUSD,
                   instalacion: 0,
                   comisionOmar: omarCommissionUSD,
+                  ivaImportacion: tcImp > 0 ? round2(ivaAcreditableBaseMXN / tcImp) : 0,
                 }}
               />
           ) : null}
