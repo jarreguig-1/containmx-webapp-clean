@@ -643,6 +643,19 @@ function isValidPhone(s: string) {
   return /^[0-9+()\-\s]{7,}$/.test((s || "").trim());
 }
 
+function calcMovTotals(list: MovimientoFin[]) {
+  const base = list.reduce(
+    (acc, m) => {
+      const total = m.incluyeIva ? round2((m.monto || 0) * (1 + IVA_RATE)) : (m.monto || 0);
+      if (m.moneda === "USD") acc.usd += total;
+      else acc.mxn += total;
+      return acc;
+    },
+    { usd: 0, mxn: 0 }
+  );
+  return { usd: round2(base.usd), mxn: round2(base.mxn) };
+}
+
 // ---- Helpers de storage/snapshots ----
 function persistProjects(data: Proyecto[], opts?: { allowShrink?: boolean }) {
   try {
@@ -3438,6 +3451,12 @@ export default function ContainMX() {
   const setS = (patch: Partial<ProyectoState>) => updateState(patch);
   const setLineas = (ls: Linea[]) => setS({ lineas: ls });
   const proyectosGanados = (projects || []).filter((p) => !!p?.state?.ganado);
+  const movimientosGanados = proyectosGanados.flatMap((p) => p.state?.movimientos || []);
+  const ccPorPagar = calcMovTotals(movimientosGanados.filter((m) => m.tipo === "cargo" && m.estado === "porPagar"));
+  const ccPorRecibir = calcMovTotals(movimientosGanados.filter((m) => m.tipo === "abono" && m.estado === "porPagar"));
+  const ccTotalCargos = calcMovTotals(movimientosGanados.filter((m) => m.tipo === "cargo"));
+  const ccTotalAbonos = calcMovTotals(movimientosGanados.filter((m) => m.tipo === "abono"));
+  const ccUtilidad = { usd: round2(ccTotalAbonos.usd - ccTotalCargos.usd), mxn: round2(ccTotalAbonos.mxn - ccTotalCargos.mxn) };
 
   // ==================== Cálculos/Hooks deben correr SIEMPRE (evita error de hooks) ====================
   // Usa un state seguro para cálculos cuando aún no hay proyecto seleccionado.
@@ -4359,6 +4378,24 @@ export default function ContainMX() {
               </div>
 
               <div style={{ height: 10 }} />
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginBottom: 12 }}>
+                <StatCard
+                  title="Por pagar (ganados)"
+                  value={`${fmtUSD(ccPorPagar.usd)} / ${fmtMXN(ccPorPagar.mxn)}`}
+                  sub="Cargos pendientes"
+                />
+                <StatCard
+                  title="Por recibir (ganados)"
+                  value={`${fmtUSD(ccPorRecibir.usd)} / ${fmtMXN(ccPorRecibir.mxn)}`}
+                  sub="Abonos pendientes"
+                />
+                <StatCard
+                  title="Utilidad final (ganados)"
+                  value={`${fmtUSD(ccUtilidad.usd)} / ${fmtMXN(ccUtilidad.mxn)}`}
+                  sub="Abonos - Cargos (totales)"
+                />
+              </div>
 
               {!proyectosGanados.length ? (
                 <div style={{ color: tokens.textMuted, fontWeight: 600 }}>
