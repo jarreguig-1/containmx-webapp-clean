@@ -1,0 +1,4 @@
+node_modules
+.next
+*.zip
+.DS_Store
