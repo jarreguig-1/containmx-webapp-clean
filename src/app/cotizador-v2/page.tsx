@@ -58,6 +58,7 @@ type StepKey =
   | "costos"
   | "cotizacion"
   | "proyectoGanado"
+  | "centroControl"
   | "logistica"
   | "impuestos"
   | "pagos"
@@ -77,6 +78,7 @@ interface ProyectoMeta {
 
 interface ProyectoState {
   // ===== Parámetros y datos ya existentes =====
+  ganado: boolean;
   tipoCambio: number;
   modulosPorContenedor: number;
   costoMaritimoUSD: number;
@@ -147,6 +149,25 @@ type ProyectoStatus =
   | "importacion"
   | "instalacion"
   | "entregado";
+
+function estatusLabel(s: ProyectoStatus) {
+  switch (s) {
+    case "anticipoProveedor":
+      return "Anticipo proveedor";
+    case "liquidacionProveedor":
+      return "Liquidación proveedor";
+    case "transito":
+      return "En tránsito";
+    case "importacion":
+      return "En importación";
+    case "instalacion":
+      return "En instalación";
+    case "entregado":
+      return "Entregado";
+    default:
+      return s;
+  }
+}
 
 type MovimientoTipo = "cargo" | "abono";
 type MovimientoMoneda = "USD" | "MXN";
@@ -449,6 +470,7 @@ function buildDefaultPagos(count: number): PagoItem[] {
 
 function defaultProyectoState(): ProyectoState {
   return {
+    ganado: false,
     tipoCambio: 0,
     modulosPorContenedor: 14,
     costoMaritimoUSD: 2500,
@@ -1055,6 +1077,7 @@ function Stepper({
     { key: "cotizacion", title: "4) Cotización", desc: "Cotización cliente" },
     { key: "pagos", title: "5) Pagos", desc: "Calendario de pagos" },
     { key: "proyectoGanado", title: "6) Ganado", desc: "Proyecto ganado" },
+    { key: "centroControl", title: "7) Centro", desc: "Centro de control" },
   ];
 
   const wrap: React.CSSProperties = { display: "grid", gap: 8, marginTop: 14 };
@@ -2584,7 +2607,7 @@ function ProyectoGanadoCard({
 
       <div style={{ height: 10 }} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 12, alignItems: "center" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr auto", gap: 12, alignItems: "center" }}>
         <Field label="Estatus del proyecto">
           <select
             value={s.estatusProyecto}
@@ -2602,6 +2625,14 @@ function ProyectoGanadoCard({
         <div style={{ fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>
           Registra cargos/abonos y estatus para alimentar el dashboard.
         </div>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 800 }}>
+          <input
+            type="checkbox"
+            checked={!!s.ganado}
+            onChange={(e) => setS({ ganado: e.target.checked })}
+          />
+          Marcar como ganado
+        </label>
       </div>
 
       <div style={{ height: 12 }} />
@@ -3406,6 +3437,7 @@ export default function ContainMX() {
   const s = current?.state;
   const setS = (patch: Partial<ProyectoState>) => updateState(patch);
   const setLineas = (ls: Linea[]) => setS({ lineas: ls });
+  const proyectosGanados = (projects || []).filter((p) => !!p?.state?.ganado);
 
   // ==================== Cálculos/Hooks deben correr SIEMPRE (evita error de hooks) ====================
   // Usa un state seguro para cálculos cuando aún no hay proyecto seleccionado.
@@ -3516,7 +3548,7 @@ export default function ContainMX() {
   // ==================== (Parte 3/10 y siguientes: cálculos + UI) ====================
   // ==================== Cálculos compartidos (mismos que tenías) ====================
   // ===== Navegación de pasos (wizard) =====
-  const stepOrder: StepKey[] = ["proyecto", "productos", "costos", "cotizacion", "pagos", "proyectoGanado"];
+  const stepOrder: StepKey[] = ["proyecto", "productos", "costos", "cotizacion", "pagos", "proyectoGanado", "centroControl"];
   const stepIndex = stepOrder.indexOf(step);
   const canPrev = stepIndex > 0;
   const canNext = stepIndex >= 0 && stepIndex < stepOrder.length - 1;
@@ -4315,6 +4347,66 @@ export default function ContainMX() {
 
           {step === "proyectoGanado" ? (
             <ProyectoGanadoCard s={sSafe} setS={setS} />
+          ) : null}
+
+          {step === "centroControl" ? (
+            <section style={card}>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+                <h2 style={h2}>Centro de control</h2>
+                <div style={{ fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>
+                  Proyectos ganados: {proyectosGanados.length}
+                </div>
+              </div>
+
+              <div style={{ height: 10 }} />
+
+              {!proyectosGanados.length ? (
+                <div style={{ color: tokens.textMuted, fontWeight: 600 }}>
+                  Aún no hay proyectos ganados. Márcalos en “Proyecto ganado”.
+                </div>
+              ) : (
+                <div style={{ maxHeight: 360, overflowY: "auto", border: `1px solid ${tokens.border}`, borderRadius: 12 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead>
+                      <tr>
+                        <Th>Proyecto</Th>
+                        <Th>Contacto</Th>
+                        <Th>Ubicación</Th>
+                        <Th>Estatus</Th>
+                        <Th style={{ textAlign: "right" }}>Unidades</Th>
+                        <Th></Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {proyectosGanados.map((p) => {
+                        const unidades = (p.state?.lineas || []).reduce((acc, l) => acc + (l.cantidad || 0), 0);
+                        return (
+                          <tr key={p.id}>
+                            <Td style={{ fontWeight: 800 }}>{p.meta?.nombre || "Proyecto"}</Td>
+                            <Td>{p.meta?.contacto || "—"}</Td>
+                            <Td>{p.meta?.ubicacion || "—"}</Td>
+                            <Td>{p.state?.estatusProyecto ? estatusLabel(p.state.estatusProyecto) : "—"}</Td>
+                            <Td style={{ textAlign: "right" }}>{unidades || 0}</Td>
+                            <Td style={{ textAlign: "right" }}>
+                              <button
+                                style={btnSmall}
+                                onClick={() => {
+                                  setCurrentId(p.id);
+                                  setStep("proyectoGanado");
+                                  window.scrollTo({ top: 0, behavior: "smooth" });
+                                }}
+                              >
+                                Abrir
+                              </button>
+                            </Td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
           ) : null}
 
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 16 }}>
