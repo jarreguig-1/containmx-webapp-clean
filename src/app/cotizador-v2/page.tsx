@@ -2720,6 +2720,9 @@ function ProyectoGanadoCard({
     movimientos.filter((m) => m.tipo === "abono" && m.categoria === "pagoCliente")
   );
   const porCobrarClienteUSD = round2(Math.max(0, totalCotizacionConIvaUSD - pagosClienteUSD));
+  const ivaAcreditableUSD = calcTotalsUSD(movimientos.filter((m) => m.categoria === "ivaImportacion"));
+  const ivaTrasladadoUSD = calcIvaUSD(movimientos.filter((m) => m.tipo === "abono" && m.incluyeIva));
+  const ivaCuentaSaldoUSD = round2(ivaAcreditableUSD - ivaTrasladadoUSD);
   const proveedorPorPagar = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar" && m.categoria === "proveedor"));
   const proveedorPagado = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && m.categoria === "proveedor"));
   const proveedorPorPagarUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar" && m.categoria === "proveedor"));
@@ -2996,6 +2999,63 @@ function ProyectoGanadoCard({
       </div>
       <div style={{ marginTop: 8, fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>
         Pagos a proveedor (Productos): Meta {fmtUSD(proveedorMetaUSD)} · Pagado {fmtUSD(proveedorPagadoProductosUSD)} · Restante {fmtUSD(proveedorRestanteProductosUSD)}
+      </div>
+
+      <div style={{ height: 12 }} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+        <div style={{ border: `1px solid ${tokens.border}`, borderRadius: 12, padding: 12 }}>
+          <div style={{ fontWeight: 800 }}>Cuenta T · Proyecto (USD)</div>
+          <div style={{ height: 8 }} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 12 }}>
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Cargos</div>
+              <div>{fmtUSD(cargosUSD)}</div>
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Abonos</div>
+              <div>{fmtUSD(abonosUSD)}</div>
+            </div>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, color: tokens.textMuted }}>
+            Saldo: {fmtUSD(saldoUSD)}
+          </div>
+        </div>
+
+        <div style={{ border: `1px solid ${tokens.border}`, borderRadius: 12, padding: 12 }}>
+          <div style={{ fontWeight: 800 }}>Cuenta T · IVA (USD)</div>
+          <div style={{ height: 8 }} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 12 }}>
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Cargos (IVA trasladado)</div>
+              <div>{fmtUSD(ivaTrasladadoUSD)}</div>
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Abonos (IVA acreditable)</div>
+              <div>{fmtUSD(ivaAcreditableUSD)}</div>
+            </div>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, color: tokens.textMuted }}>
+            Saldo IVA: {fmtUSD(ivaCuentaSaldoUSD)}
+          </div>
+        </div>
+
+        <div style={{ border: `1px solid ${tokens.border}`, borderRadius: 12, padding: 12 }}>
+          <div style={{ fontWeight: 800 }}>Cuenta T · Por pagar / por cobrar (USD)</div>
+          <div style={{ height: 8 }} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 12 }}>
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Por pagar</div>
+              <div>{fmtUSD(porPagarUSD)}</div>
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Por cobrar</div>
+              <div>{fmtUSD(porCobrarClienteUSD)}</div>
+            </div>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, color: tokens.textMuted }}>
+            Total con IVA: {fmtUSD(totalCotizacionConIvaUSD)}
+          </div>
+        </div>
       </div>
 
       <div style={{ height: 12 }} />
@@ -3574,6 +3634,8 @@ export default function ContainMX() {
           agenteAduanal: 0,
           maniobras: 0,
           honorarios: 0,
+          instalacion: 0,
+          comisionOmar: 0,
         },
       },
     };
