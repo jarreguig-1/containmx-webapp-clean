@@ -2717,7 +2717,7 @@ function ProyectoGanadoCard({
   const ivaSaldoUSD = round2(ivaAbonosUSD - ivaCargosUSD);
   const totalCotizacionConIvaUSD = round2((totalVentaUSD || 0) * (1 + IVA_RATE));
   const pagosClienteUSD = calcTotalsUSD(
-    movimientos.filter((m) => m.tipo === "abono" && m.categoria === "pagoCliente")
+    movimientos.filter((m) => m.tipo === "abono" && m.categoria === "pagoCliente" && m.estado === "pagado")
   );
   const porCobrarClienteUSD = round2(Math.max(0, totalCotizacionConIvaUSD - pagosClienteUSD));
   const ivaAcreditableUSD = calcTotalsUSD(movimientos.filter((m) => m.categoria === "ivaImportacion"));
@@ -4755,7 +4755,7 @@ export default function ContainMX() {
                   seguro: seguroUSD,
                   igi: igiUSD,
                   dta: dtaUSD,
-                  agenteAduanal: agenteAduanalUSD,
+                  agenteAduanal: agenteAduanalUSDTotal,
                   maniobras: maniobrasPuertoUSD,
                   honorarios: pagoAsesorTotalUSD,
                   instalacion: 0,
