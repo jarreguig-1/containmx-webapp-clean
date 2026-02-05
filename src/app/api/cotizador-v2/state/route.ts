@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { Pool } from "pg";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,6 +6,9 @@ export const dynamic = "force-dynamic";
 const STATE_ID = "cotizador-v2";
 
 let pool: any = null;
+// Use require to avoid TypeScript type resolution issues in Vercel builds
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { Pool } = require("pg");
 
 function getConnectionString() {
   return (
