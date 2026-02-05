@@ -646,7 +646,7 @@ function isValidPhone(s: string) {
 function calcMovTotals(list: MovimientoFin[]) {
   const base = list.reduce(
     (acc, m) => {
-      const total = m.incluyeIva ? round2((m.monto || 0) * (1 + IVA_RATE)) : (m.monto || 0);
+      const total = (m.monto || 0); // NO sumar IVA al total, solo desglosar
       if (m.moneda === "USD") acc.usd += total;
       else acc.mxn += total;
       return acc;
@@ -654,6 +654,33 @@ function calcMovTotals(list: MovimientoFin[]) {
     { usd: 0, mxn: 0 }
   );
   return { usd: round2(base.usd), mxn: round2(base.mxn) };
+}
+
+function calcMovTotalsFx(list: MovimientoFin[]) {
+  return list.reduce(
+    (acc, m) => {
+      const total = (m.monto || 0);
+      const tc = m.tcPago || 0;
+      let usd = 0;
+      let mxn = 0;
+      if (m.moneda === "USD") {
+        usd = total;
+        mxn = tc > 0 ? round2(total * tc) : 0;
+      } else {
+        mxn = total;
+        usd = tc > 0 ? round2(total / tc) : 0;
+      }
+      if (m.tipo === "cargo") {
+        acc.usd -= usd;
+        acc.mxn -= mxn;
+      } else {
+        acc.usd += usd;
+        acc.mxn += mxn;
+      }
+      return acc;
+    },
+    { usd: 0, mxn: 0 }
+  );
 }
 
 // ---- Helpers de storage/snapshots ----
@@ -2594,7 +2621,7 @@ function ProyectoGanadoCard({
   const calcTotal = (list: MovimientoFin[]) => {
     const base = list.reduce(
       (acc, m) => {
-        const total = m.incluyeIva ? round2((m.monto || 0) * (1 + IVA_RATE)) : (m.monto || 0);
+        const total = (m.monto || 0); // no sumar IVA, solo desglosar
         if (m.moneda === "USD") acc.usd += total;
         else acc.mxn += total;
         return acc;
@@ -2609,6 +2636,9 @@ function ProyectoGanadoCard({
   const totalCargos = calcTotal(movimientos.filter((m) => m.tipo === "cargo"));
   const totalAbonos = calcTotal(movimientos.filter((m) => m.tipo === "abono"));
   const utilidadFinal = { usd: round2(totalAbonos.usd - totalCargos.usd), mxn: round2(totalAbonos.mxn - totalCargos.mxn) };
+  const saldoFx = calcMovTotalsFx(movimientos);
+  const proveedorPorPagar = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar" && m.categoria === "proveedor"));
+  const proveedorPagado = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && m.categoria === "proveedor"));
 
   return (
     <section style={card}>
@@ -2754,7 +2784,7 @@ function ProyectoGanadoCard({
                     {m.incluyeIva ? fmtUSD(round2((m.monto || 0) * IVA_RATE), false) : "—"}
                   </Td>
                   <Td style={{ textAlign: "right", fontWeight: 800 }}>
-                    {fmtUSD(m.incluyeIva ? round2((m.monto || 0) * (1 + IVA_RATE)) : (m.monto || 0), false)}
+                    {fmtUSD(m.monto || 0, false)}
                   </Td>
                   <Td>
                     <select
@@ -2812,8 +2842,21 @@ function ProyectoGanadoCard({
         />
         <StatCard
           title="Utilidad final"
-          value={`${fmtUSD(utilidadFinal.usd)} / ${fmtMXN(utilidadFinal.mxn)}`}
-          sub="Abonos - Cargos (totales)"
+          value={`${fmtUSD(saldoFx.usd)} / ${fmtMXN(saldoFx.mxn)}`}
+          sub="Saldo neto (abonos - cargos)"
+        />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
+        <StatCard
+          title="Proveedor por pagar"
+          value={`${fmtUSD(proveedorPorPagar.usd)} / ${fmtMXN(proveedorPorPagar.mxn)}`}
+          sub="Cargos proveedor pendientes"
+        />
+        <StatCard
+          title="Proveedor pagado"
+          value={`${fmtUSD(proveedorPagado.usd)} / ${fmtMXN(proveedorPagado.mxn)}`}
+          sub="Cargos proveedor pagados"
         />
       </div>
     </section>
