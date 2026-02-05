@@ -194,6 +194,8 @@ type MovimientoCategoria =
   | "agenteAduanal"
   | "maniobras"
   | "honorarios"
+  | "pagoCliente"
+  | "ivaImportacion"
   | "retiroUtilidad"
   | "importacion"
   | "instalacion"
@@ -732,6 +734,10 @@ function calcTotalsUSD(list: MovimientoFin[]) {
 function calcIvaUSD(list: MovimientoFin[]) {
   return round2(
     list.reduce((acc, m) => {
+      if (m.categoria === "ivaImportacion") {
+        const ivaUsd = m.moneda === "USD" ? (m.monto || 0) : (m.tcPago && m.tcPago > 0 ? round2((m.monto || 0) / m.tcPago) : 0);
+        return acc + ivaUsd;
+      }
       if (!m.incluyeIva) return acc;
       const iva = round2((m.monto || 0) * IVA_RATE);
       const ivaUsd = m.moneda === "USD" ? iva : (m.tcPago && m.tcPago > 0 ? round2(iva / m.tcPago) : 0);
@@ -2640,9 +2646,11 @@ function CalendarioPagosCard({
 function ProyectoGanadoCard({
   s,
   setS,
+  totalVentaUSD,
 }: {
   s: ProyectoState;
   setS: (patch: Partial<ProyectoState>) => void;
+  totalVentaUSD: number;
 }) {
   const movimientos = Array.isArray(s.movimientos) ? s.movimientos : [];
   const [montoDraft, setMontoDraft] = useState<Record<string, string>>({});
@@ -2689,19 +2697,22 @@ function ProyectoGanadoCard({
   };
 
   const porPagar = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar"));
-  const porRecibir = calcTotal(movimientos.filter((m) => m.tipo === "abono" && m.estado === "porPagar"));
   const totalCargos = calcTotal(movimientos.filter((m) => m.tipo === "cargo"));
   const totalAbonos = calcTotal(movimientos.filter((m) => m.tipo === "abono"));
   const utilidadFinal = { usd: round2(totalAbonos.usd - totalCargos.usd), mxn: round2(totalAbonos.mxn - totalCargos.mxn) };
   const saldoFx = calcMovTotalsFx(movimientos);
   const porPagarUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar"));
-  const porRecibirUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "abono" && m.estado === "porPagar"));
   const cargosUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo"));
   const abonosUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "abono"));
   const saldoUSD = round2(abonosUSD - cargosUSD);
   const ivaCargosUSD = calcIvaUSD(movimientos.filter((m) => m.tipo === "cargo"));
   const ivaAbonosUSD = calcIvaUSD(movimientos.filter((m) => m.tipo === "abono"));
   const ivaSaldoUSD = round2(ivaAbonosUSD - ivaCargosUSD);
+  const totalCotizacionConIvaUSD = round2((totalVentaUSD || 0) * (1 + IVA_RATE));
+  const pagosClienteUSD = calcTotalsUSD(
+    movimientos.filter((m) => m.tipo === "abono" && m.categoria === "pagoCliente")
+  );
+  const porCobrarClienteUSD = round2(Math.max(0, totalCotizacionConIvaUSD - pagosClienteUSD));
   const proveedorPorPagar = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar" && m.categoria === "proveedor"));
   const proveedorPagado = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && m.categoria === "proveedor"));
   const proveedorPorPagarUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar" && m.categoria === "proveedor"));
@@ -2828,6 +2839,8 @@ function ProyectoGanadoCard({
                       <option value="agenteAduanal">Agente aduanal</option>
                       <option value="maniobras">Maniobras</option>
                       <option value="honorarios">Honorarios asesor</option>
+                      <option value="pagoCliente">Pago cliente</option>
+                      <option value="ivaImportacion">IVA importación</option>
                       <option value="importacion">Importación</option>
                       <option value="instalacion">Instalación</option>
                       <option value="proveedor">Proveedor</option>
@@ -2933,9 +2946,9 @@ function ProyectoGanadoCard({
           sub="Cargos pendientes"
         />
         <StatCard
-          title="Por recibir"
-          value={`${fmtUSD(porRecibirUSD)} `}
-          sub="Abonos pendientes"
+          title="Por cobrar cliente"
+          value={`${fmtUSD(porCobrarClienteUSD)} `}
+          sub={`Total con IVA: ${fmtUSD(totalCotizacionConIvaUSD)}`}
         />
         <StatCard
           title="Utilidad final"
@@ -4649,7 +4662,7 @@ export default function ContainMX() {
           ) : null}
 
           {step === "proyectoGanado" ? (
-            <ProyectoGanadoCard s={sSafe} setS={setS} />
+              <ProyectoGanadoCard s={sSafe} setS={setS} totalVentaUSD={totalPrecioUSD} />
           ) : null}
 
           {step === "centroControl" ? (
