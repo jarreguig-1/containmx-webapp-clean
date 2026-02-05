@@ -2711,13 +2711,13 @@ function ProyectoGanadoCard({
   const utilidadFinal = { usd: round2(totalAbonos.usd - totalCargos.usd), mxn: round2(totalAbonos.mxn - totalCargos.mxn) };
   const saldoFx = calcMovTotalsFx(movimientos);
   const porPagarUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar"));
-  const cargosUSD = calcTotalsUSD(
+  const cargosUtilUSD = calcTotalsUSD(
     movimientos.filter(
-      (m) => !(m.tipo === "cargo" && m.categoria === "productos" && m.estado === "pagado")
+      (m) => m.tipo === "cargo" && !(m.categoria === "productos" && m.estado === "pagado")
     )
   );
-  const abonosUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "abono"));
-  const saldoUSD = round2(abonosUSD - cargosUSD);
+  const abonosUtilUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "abono"));
+  const saldoUSD = round2(abonosUtilUSD - cargosUtilUSD);
   const ivaCargosUSD = calcIvaUSD(movimientos.filter((m) => m.tipo === "cargo"));
   const ivaAbonosUSD = calcIvaUSD(movimientos.filter((m) => m.tipo === "abono"));
   const ivaSaldoUSD = round2(ivaAbonosUSD - ivaCargosUSD);
@@ -3019,11 +3019,11 @@ function ProyectoGanadoCard({
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 12 }}>
             <div>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>Cargos</div>
-              <div>{fmtUSD(cargosUSD)}</div>
+              <div>{fmtUSD(cargosUtilUSD)}</div>
             </div>
             <div>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>Abonos</div>
-              <div>{fmtUSD(abonosUSD)}</div>
+              <div>{fmtUSD(abonosUtilUSD)}</div>
             </div>
           </div>
           <div style={{ marginTop: 8, fontSize: 12, color: tokens.textMuted }}>
