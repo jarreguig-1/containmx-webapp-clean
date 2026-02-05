@@ -4015,6 +4015,38 @@ export default function ContainMX() {
                 </option>
               ))}
             </select>
+            <div style={{ display: "grid", gap: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: tokens.textMuted }}>Proyectos ganados</div>
+              <div style={{ maxHeight: 88, overflowY: "auto", border: `1px solid ${tokens.border}`, borderRadius: 10, padding: 6, minWidth: 200, background: tokens.surface }}>
+                {!proyectosGanados.length ? (
+                  <div style={{ fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>Sin ganados</div>
+                ) : (
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {proyectosGanados.map((p) => (
+                      <button
+                        key={p.id}
+                        style={{
+                          ...btnGhost,
+                          padding: "6px 8px",
+                          textAlign: "left",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          background: p.id === currentSafeId ? "#eef2ff" : undefined,
+                          borderColor: p.id === currentSafeId ? "#c7d2fe" : tokens.border,
+                        }}
+                        onClick={() => {
+                          setCurrentId(p.id);
+                          setStep("proyectoGanado");
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                      >
+                        {p.meta?.nombre || "Proyecto"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
             {savedAt ? (
               <span style={{ fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>
                 Guardado: {savedAt.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
