@@ -2745,6 +2745,19 @@ function ProyectoGanadoCard({
     const base = m.monto || 0;
     return round2((base * IVA_RATE) / (1 + IVA_RATE));
   };
+  const movAmountWithIva = (m: MovimientoFin) => {
+    if (m.categoria === "iva" || m.categoria === "ivaImportacion") {
+      return Number.isFinite(m.ivaManual) ? (m.ivaManual as number) : (m.monto || 0);
+    }
+    const iva = m.incluyeIva ? ivaAmountOfMov(m) : 0;
+    return round2((m.monto || 0) + iva);
+  };
+  const movToUSDWithIva = (m: MovimientoFin) => {
+    const amount = movAmountWithIva(m);
+    if (m.moneda === "USD") return amount;
+    const tc = m.tcPago || tcDefault || 0;
+    return tc > 0 ? round2(amount / tc) : 0;
+  };
 
   const porPagar = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar"));
   const totalCargos = calcTotal(movimientos.filter((m) => m.tipo === "cargo"));
@@ -2752,8 +2765,12 @@ function ProyectoGanadoCard({
   const utilidadFinal = { usd: round2(totalAbonos.usd - totalCargos.usd), mxn: round2(totalAbonos.mxn - totalCargos.mxn) };
   const saldoFx = calcMovTotalsFx(movimientos);
 
-  const porPagarUSD = calcTotalsUSDLocal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar"));
-  const porPagarMXN = calcTotalsMXNLocal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar"));
+  const porPagarUSD = round2(
+    movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar").reduce((acc, m) => acc + movToUSDWithIva(m), 0)
+  );
+  const porPagarMXN = round2(
+    movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar").reduce((acc, m) => acc + movToMXNFallback(m, movAmountWithIva(m)), 0)
+  );
   const cargosUtilUSD = calcTotalsUSDLocal(
     movimientos.filter(
       (m) => m.tipo === "cargo" && !(m.categoria === "productos" && m.estado === "pagado")
@@ -2781,11 +2798,15 @@ function ProyectoGanadoCard({
   const ivaSaldoUSD = round2(ivaAbonosUSD - ivaCargosUSD);
 
   const totalCotizacionConIvaUSD = round2((totalVentaUSD || 0) * (1 + IVA_RATE));
-  const pagosClienteUSD = calcTotalsUSDLocal(
-    movimientos.filter((m) => m.tipo === "abono" && m.categoria === "pagoCliente" && m.estado === "pagado")
+  const pagosClienteUSD = round2(
+    movimientos
+      .filter((m) => m.tipo === "abono" && m.categoria === "pagoCliente" && m.estado === "pagado")
+      .reduce((acc, m) => acc + movToUSDWithIva(m), 0)
   );
-  const pagosClientePendUSD = calcTotalsUSDLocal(
-    movimientos.filter((m) => m.tipo === "abono" && m.categoria === "pagoCliente" && m.estado === "porPagar")
+  const pagosClientePendUSD = round2(
+    movimientos
+      .filter((m) => m.tipo === "abono" && m.categoria === "pagoCliente" && m.estado === "porPagar")
+      .reduce((acc, m) => acc + movToUSDWithIva(m), 0)
   );
   const porCobrarClienteUSD = round2(Math.max(0, totalCotizacionConIvaUSD - pagosClienteUSD));
   const porCobrarClienteMXN = round2(tcDefault > 0 ? porCobrarClienteUSD * tcDefault : 0);
@@ -2807,6 +2828,23 @@ function ProyectoGanadoCard({
       }, 0)
   );
   const ivaCuentaSaldoUSD = round2(ivaAcreditableUSD - ivaTrasladadoUSD);
+  const ivaAcreditableMXN = round2(
+    movimientos
+      .filter((m) => m.categoria === "ivaImportacion")
+      .reduce((acc, m) => {
+        const base = Number.isFinite(m.ivaManual) ? (m.ivaManual as number) : (m.monto || 0);
+        return acc + movToMXNFallback(m, base);
+      }, 0)
+  );
+  const ivaTrasladadoMXN = round2(
+    movimientos
+      .filter((m) => m.tipo === "abono" && m.incluyeIva)
+      .reduce((acc, m) => {
+        const iva = ivaAmountOfMov(m);
+        return acc + movToMXNFallback(m, iva);
+      }, 0)
+  );
+  const ivaCuentaSaldoMXN = round2(ivaAcreditableMXN - ivaTrasladadoMXN);
 
   const proveedorPorPagar = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar" && m.categoria === "proveedor"));
   const proveedorPagado = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && m.categoria === "proveedor"));
@@ -2835,14 +2873,24 @@ function ProyectoGanadoCard({
   const proveedorPagadoProductosUSD = pagosPorCategoriaUSD("productos", "pagado");
   const proveedorRestanteProductosUSD = round2(proveedorMetaUSD - proveedorPagadoProductosUSD);
   const proveedorPorPagarUSD = round2(Math.max(0, proveedorMetaUSD - proveedorPagadoProductosUSD));
-  const cargosPagadosUSD = calcTotalsUSDLocal(
-    movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && !(m.categoria === "productos"))
+  const cargosPagadosUSD = round2(
+    movimientos
+      .filter((m) => m.tipo === "cargo" && m.estado === "pagado" && !(m.categoria === "productos"))
+      .reduce((acc, m) => acc + movToUSDWithIva(m), 0)
   );
-  const abonosPagadosUSD = calcTotalsUSDLocal(movimientos.filter((m) => m.tipo === "abono" && m.estado === "pagado"));
+  const abonosPagadosUSD = round2(
+    movimientos
+      .filter((m) => m.tipo === "abono" && m.estado === "pagado")
+      .reduce((acc, m) => acc + movToUSDWithIva(m), 0)
+  );
   const saldoPagadoUSD = round2(abonosPagadosUSD - cargosPagadosUSD);
   const saldoPagadoMXN = round2(
-    calcTotalsMXNLocal(movimientos.filter((m) => m.tipo === "abono" && m.estado === "pagado")) -
-    calcTotalsMXNLocal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && !(m.categoria === "productos")))
+    movimientos
+      .filter((m) => m.tipo === "abono" && m.estado === "pagado")
+      .reduce((acc, m) => acc + movToMXNFallback(m, movAmountWithIva(m)), 0) -
+    movimientos
+      .filter((m) => m.tipo === "cargo" && m.estado === "pagado" && !(m.categoria === "productos"))
+      .reduce((acc, m) => acc + movToMXNFallback(m, movAmountWithIva(m)), 0)
   );
   const cargosTodosMXN = calcTotalsMXNLocal(
     movimientos.filter((m) => m.tipo === "cargo" && !(m.categoria === "productos" && m.estado === "pagado"))
@@ -2875,14 +2923,7 @@ function ProyectoGanadoCard({
       if (m.tipo === "cargo" && m.categoria === "productos" && m.estado === "pagado") {
         return;
       }
-      let amount = 0;
-      if (m.categoria === "iva" || m.categoria === "ivaImportacion") {
-        amount = Number.isFinite(m.ivaManual) ? (m.ivaManual as number) : (m.monto || 0);
-      } else {
-        const iva = m.incluyeIva ? ivaAmountOfMov(m) : 0;
-        amount = round2((m.monto || 0) + iva);
-      }
-      const mxn = movToMXNFallback(m, amount);
+      const mxn = movToMXNFallback(m, movAmountWithIva(m));
       const inflow = m.tipo === "abono" ? mxn : 0;
       const outflow = m.tipo === "cargo" ? mxn : 0;
       running = round2(running + inflow - outflow);
@@ -2890,8 +2931,6 @@ function ProyectoGanadoCard({
     });
     return rows;
   })();
-  const saldoPendienteFlujoMXN = flowRows.length ? flowRows[flowRows.length - 1].balance : saldoPendienteMXN;
-
   const computeFlowTotals = () => {
     let inMXN = 0;
     let outMXN = 0;
@@ -2899,15 +2938,8 @@ function ProyectoGanadoCard({
     let outUSD = 0;
     flowMovs.forEach((m) => {
       if (m.tipo === "cargo" && m.categoria === "productos" && m.estado === "pagado") return;
-      let amount = 0;
-      if (m.categoria === "iva" || m.categoria === "ivaImportacion") {
-        amount = Number.isFinite(m.ivaManual) ? (m.ivaManual as number) : (m.monto || 0);
-      } else {
-        const iva = m.incluyeIva ? ivaAmountOfMov(m) : 0;
-        amount = round2((m.monto || 0) + iva);
-      }
-      const mxn = movToMXNFallback(m, amount);
-      const usd = movToUSDFallback({ ...m, monto: amount });
+      const mxn = movToMXNFallback(m, movAmountWithIva(m));
+      const usd = movToUSDFallback({ ...m, monto: movAmountWithIva(m) });
       if (m.tipo === "abono") {
         inMXN = round2(inMXN + mxn);
         inUSD = round2(inUSD + usd);
@@ -2926,6 +2958,10 @@ function ProyectoGanadoCard({
     };
   };
   const flowTotals = computeFlowTotals();
+  const saldoPendienteFlujoMXN = flowTotals.saldoMXN;
+  const pendientePorCobrarMXN = round2(
+    tcDefault > 0 ? Math.max(0, porCobrarClienteUSD - porPagarUSD) * tcDefault : 0
+  );
 
   useEffect(() => {
     const current = s.costosControl || ({} as ProyectoState["costosControl"]);
@@ -3218,7 +3254,7 @@ function ProyectoGanadoCard({
         <StatCard
           title="Utilidad final"
           value={`${fmtMXN(saldoPendienteFlujoMXN)} `}
-          sub={`Pendiente (flujo): ${fmtMXN(saldoPendienteFlujoMXN)}\nReal (recibido - pagado): ${fmtMXN(saldoPagadoMXN)}`}
+          sub={`Pendiente (por cobrar - por pagar): ${fmtMXN(pendientePorCobrarMXN)}\nReal (recibido - pagado): ${fmtMXN(saldoPagadoMXN)}`}
         />
       </div>
 
@@ -3261,20 +3297,22 @@ function ProyectoGanadoCard({
         </div>
 
         <div style={{ border: `1px solid ${tokens.border}`, borderRadius: 12, padding: 12 }}>
-          <div style={{ fontWeight: 800 }}>Cuenta T · IVA (USD)</div>
+          <div style={{ fontWeight: 800 }}>Cuenta T · IVA (USD/MXN)</div>
           <div style={{ height: 8 }} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 12 }}>
             <div>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>Cargos (IVA trasladado)</div>
               <div>{fmtUSD(ivaTrasladadoUSD)}</div>
+              <div style={{ color: tokens.textMuted }}>{fmtMXN(ivaTrasladadoMXN)}</div>
             </div>
             <div>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>Abonos (IVA acreditable)</div>
               <div>{fmtUSD(ivaAcreditableUSD)}</div>
+              <div style={{ color: tokens.textMuted }}>{fmtMXN(ivaAcreditableMXN)}</div>
             </div>
           </div>
           <div style={{ marginTop: 8, fontSize: 12, color: tokens.textMuted }}>
-            Saldo IVA: {fmtUSD(ivaCuentaSaldoUSD)}
+            Saldo IVA: {fmtUSD(ivaCuentaSaldoUSD)} · {fmtMXN(ivaCuentaSaldoMXN)}
           </div>
         </div>
 
@@ -3976,11 +4014,57 @@ export default function ContainMX() {
   const setLineas = (ls: Linea[]) => setS({ lineas: ls });
   const proyectosGanados = (projects || []).filter((p) => !!p?.state?.ganado);
   const movimientosGanados = proyectosGanados.flatMap((p) => p.state?.movimientos || []);
-  const ccPorPagar = calcMovTotals(movimientosGanados.filter((m) => m.tipo === "cargo" && m.estado === "porPagar"));
-  const ccPorRecibir = calcMovTotals(movimientosGanados.filter((m) => m.tipo === "abono" && m.estado === "porPagar"));
-  const ccTotalCargos = calcMovTotals(movimientosGanados.filter((m) => m.tipo === "cargo"));
-  const ccTotalAbonos = calcMovTotals(movimientosGanados.filter((m) => m.tipo === "abono"));
-  const ccUtilidad = { usd: round2(ccTotalAbonos.usd - ccTotalCargos.usd), mxn: round2(ccTotalAbonos.mxn - ccTotalCargos.mxn) };
+  const movAmountWithIva = (m: Movimiento): number => {
+    if (m.categoria === "iva" || m.categoria === "ivaImportacion") {
+      return Number.isFinite(m.ivaManual) ? (m.ivaManual as number) : (m.monto || 0);
+    }
+    const iva = m.incluyeIva ? ivaAmountOfMov(m) : 0;
+    return round2((m.monto || 0) + iva);
+  };
+  const movToMXNFlow = (m: Movimiento) => movToMXNFallback(m, movAmountWithIva(m));
+  const movToUSDFlow = (m: Movimiento) => movToUSDFallback({ ...m, monto: movAmountWithIva(m) });
+  const ccMovs = movimientosGanados.filter((m) => m.fecha);
+  const ccPorPagar = (() => {
+    const movs = movimientosGanados.filter((m) => m.tipo === "cargo" && m.estado === "porPagar");
+    return {
+      usd: round2(movs.reduce((acc, m) => acc + movToUSDFlow(m), 0)),
+      mxn: round2(movs.reduce((acc, m) => acc + movToMXNFlow(m), 0)),
+    };
+  })();
+  const ccPorRecibir = (() => {
+    const movs = movimientosGanados.filter((m) => m.tipo === "abono" && m.estado === "porPagar");
+    return {
+      usd: round2(movs.reduce((acc, m) => acc + movToUSDFlow(m), 0)),
+      mxn: round2(movs.reduce((acc, m) => acc + movToMXNFlow(m), 0)),
+    };
+  })();
+  const ccFlowTotals = (() => {
+    let inMXN = 0;
+    let outMXN = 0;
+    let inUSD = 0;
+    let outUSD = 0;
+    ccMovs.forEach((m) => {
+      if (m.tipo === "cargo" && m.categoria === "productos" && m.estado === "pagado") return;
+      const mxn = movToMXNFlow(m);
+      const usd = movToUSDFlow(m);
+      if (m.tipo === "abono") {
+        inMXN = round2(inMXN + mxn);
+        inUSD = round2(inUSD + usd);
+      } else {
+        outMXN = round2(outMXN + mxn);
+        outUSD = round2(outUSD + usd);
+      }
+    });
+    return {
+      inMXN,
+      outMXN,
+      saldoMXN: round2(inMXN - outMXN),
+      inUSD,
+      outUSD,
+      saldoUSD: round2(inUSD - outUSD),
+    };
+  })();
+  const ccUtilidad = { usd: ccFlowTotals.saldoUSD, mxn: ccFlowTotals.saldoMXN };
   const toggleGanado = (checked: boolean) => {
     if (!current) return;
     setS({ ganado: checked });
