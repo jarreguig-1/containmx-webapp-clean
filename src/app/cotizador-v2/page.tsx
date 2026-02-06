@@ -4022,8 +4022,18 @@ export default function ContainMX() {
     const iva = m.incluyeIva ? round2((base * IVA_RATE) / (1 + IVA_RATE)) : 0;
     return round2(base + iva);
   };
-  const movToMXNFlow = (m: MovimientoFin) => movToMXNFallback(m, movAmountWithIva(m));
-  const movToUSDFlow = (m: MovimientoFin) => movToUSDFallback({ ...m, monto: movAmountWithIva(m) });
+  const movToMXNFlow = (m: MovimientoFin) => {
+    const amount = movAmountWithIva(m);
+    if (m.moneda === "MXN") return amount;
+    const tc = m.tcPago || 0;
+    return tc > 0 ? round2(amount * tc) : 0;
+  };
+  const movToUSDFlow = (m: MovimientoFin) => {
+    const amount = movAmountWithIva(m);
+    if (m.moneda === "USD") return amount;
+    const tc = m.tcPago || 0;
+    return tc > 0 ? round2(amount / tc) : 0;
+  };
   const ccMovs = movimientosGanados.filter((m) => m.fecha);
   const ccPorPagar = (() => {
     const movs = movimientosGanados.filter((m) => m.tipo === "cargo" && m.estado === "porPagar");
