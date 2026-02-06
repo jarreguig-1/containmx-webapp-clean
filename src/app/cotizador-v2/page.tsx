@@ -4675,6 +4675,89 @@ export default function ContainMX() {
     setTimeout(() => w.print(), 300);
   };
 
+  const exportCotizacionExcel = async () => {
+    const XLSX = await import("xlsx");
+    const meta = current?.meta as ProyectoMeta;
+    const fecha = new Date();
+    const fechaFmt = fecha.toLocaleDateString("es-MX");
+    const nombreProyecto = meta?.nombre || "Proyecto";
+    const contacto = meta?.contacto || "";
+    const razonSocial = meta?.razonSocial || "";
+    const ubicacion = meta?.ubicacion || "";
+    const telefono = meta?.contactoTelefono || "";
+    const correo = meta?.contactoEmail || "";
+
+    const resumenRows = [
+      ["Proyecto", nombreProyecto],
+      ["Contacto", contacto],
+      ["Razón social", razonSocial],
+      ["Ubicación", ubicacion],
+      ["Teléfono", telefono],
+      ["Correo", correo],
+      ["Fecha", fechaFmt],
+      ["Tipo de cambio", s?.tipoCambio ?? 0],
+      ["Margen objetivo %", s?.marginPct ?? 0],
+      ["Descuento %", s?.descuentoPct ?? 0],
+      ["Comisión Omar %", s?.comisionOmarPct ?? 0],
+      ["Costo total (USD)", round2(totalCostoUSD)],
+      ["Precio de venta (USD)", round2(totalPrecioUSD)],
+      ["Utilidad (USD)", round2(totalUtilidadUSD)],
+      ["Comisión Omar (USD)", round2(omarCommissionUSD)],
+      ["Utilidad neta (USD)", round2(netUtilidadUSD)],
+      ["Margen neto promedio %", round2(avgMarginNetPct)],
+      ["m2 rentables", round2(totalRentableM2Safe)],
+      ["Precio/m2 USD", round2(precioXM2USD)],
+      ["Precio/m2 MXN", round2(precioXM2MXN)],
+    ];
+
+    const resumenSheet = XLSX.utils.aoa_to_sheet(resumenRows);
+
+    const cotizacionRows = rows.map((r) => {
+      const utilidadNetaPct = r.precioLinea > 0 ? round2((r.utilidadLinea / r.precioLinea) * 100) : 0;
+      const omarLineaUSD = totalPrecioUSD > 0 ? round2((r.precioLinea / totalPrecioUSD) * omarCommissionUSD) : 0;
+      const precioXM2LineaUSD = r.m2Linea > 0 ? round2(r.precioLinea / r.m2Linea) : 0;
+      return {
+        Medida: `${r.medida}'`,
+        Modelo: r.modelo,
+        Tipo: r.tipo,
+        Qty: r.qty,
+        m2: round2(r.m2Linea),
+        "Costo USD/u": round2(r.costoUnidad),
+        "Precio USD/u": round2(r.precioUnidad),
+        "Costo línea": round2(r.costoLinea),
+        "Precio línea": round2(r.precioLinea),
+        Utilidad: round2(r.utilidadLinea),
+        "Utilidad % (neta)": utilidadNetaPct,
+        "Comisión Omar": omarLineaUSD,
+        "Precio/m2 USD": precioXM2LineaUSD,
+      };
+    });
+    const cotizacionSheet = XLSX.utils.json_to_sheet(cotizacionRows);
+
+    const costosRows = [
+      { Concepto: "Productos", "Monto (USD)": round2(valorProductosUSD) },
+      { Concepto: "Flete marítimo", "Monto (USD)": round2(fleteMaritimoUSD) },
+      { Concepto: "Flete terrestre", "Monto (USD)": round2(fleteTerrestreUSD) },
+      { Concepto: "Seguro", "Monto (USD)": round2(seguroUSD) },
+      { Concepto: "IGI", "Monto (USD)": round2(igiUSD) },
+      { Concepto: "DTA", "Monto (USD)": round2(dtaUSD) },
+      { Concepto: "Agente aduanal", "Monto (USD)": round2(agenteAduanalUSDTotal) },
+      { Concepto: "Maniobras puerto", "Monto (USD)": round2(maniobrasPuertoUSDTotal) },
+      { Concepto: "Honorarios asesor", "Monto (USD)": round2(pagoAsesorTotalUSD) },
+      { Concepto: "Total costo estimado", "Monto (USD)": round2(totalCostoUSD) },
+      { Concepto: "IVA a pagar importación (MXN)", "Monto (USD)": round2(ivaAcreditableBaseMXN) },
+    ];
+    const costosSheet = XLSX.utils.json_to_sheet(costosRows);
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, resumenSheet, "Resumen");
+    XLSX.utils.book_append_sheet(wb, cotizacionSheet, "Cotizacion");
+    XLSX.utils.book_append_sheet(wb, costosSheet, "Costos");
+
+    const safeName = (nombreProyecto || "cotizacion").replace(/[^a-z0-9\-_]+/gi, "_");
+    XLSX.writeFile(wb, `${safeName}_cotizacion.xlsx`);
+  };
+
   const syncPagosFromCondiciones = () => {
     const raw = (s?.cotCondiciones || "").toString();
     const match = raw.match(/Términos de pago:\s*([^\n]+)/i);
@@ -5131,7 +5214,8 @@ export default function ContainMX() {
                   </Field>
                 </div>
               </section>
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+                <button style={btnSmall} onClick={exportCotizacionExcel}>Exportar Excel</button>
                 <button style={btn} onClick={exportCotizacionPdf}>Exportar cotización PDF</button>
               </div>
             </>
