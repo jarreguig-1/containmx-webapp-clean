@@ -2890,6 +2890,7 @@ function ProyectoGanadoCard({
     });
     return rows;
   })();
+  const saldoPendienteFlujoMXN = flowRows.length ? flowRows[flowRows.length - 1].balance : saldoPendienteMXN;
 
   useEffect(() => {
     const current = s.costosControl || ({} as ProyectoState["costosControl"]);
@@ -3181,8 +3182,8 @@ function ProyectoGanadoCard({
         />
         <StatCard
           title="Utilidad final"
-          value={`${fmtMXN(saldoPendienteMXN)} `}
-          sub={`Pendiente (por cobrar - por pagar): ${fmtMXN(saldoPendienteMXN)}\nReal (recibido - pagado): ${fmtMXN(saldoPagadoMXN)}`}
+          value={`${fmtMXN(saldoPendienteFlujoMXN)} `}
+          sub={`Pendiente (flujo): ${fmtMXN(saldoPendienteFlujoMXN)}\nReal (recibido - pagado): ${fmtMXN(saldoPagadoMXN)}`}
         />
       </div>
 
