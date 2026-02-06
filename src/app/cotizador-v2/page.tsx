@@ -2672,6 +2672,7 @@ function ProyectoGanadoCard({
 }) {
   const movimientos = Array.isArray(s.movimientos) ? s.movimientos : [];
   const [montoDraft, setMontoDraft] = useState<Record<string, string>>({});
+  const [soloIva, setSoloIva] = useState(false);
 
   const setMovs = (next: MovimientoFin[]) => setS({ movimientos: next });
 
@@ -2778,6 +2779,9 @@ function ProyectoGanadoCard({
     const db = b.fecha ? new Date(b.fecha).getTime() : 0;
     return db - da;
   });
+  const movimientosView = soloIva
+    ? movimientosOrdenados.filter((m) => m.categoria === "iva" || m.categoria === "ivaImportacion")
+    : movimientosOrdenados;
   const defaultsKey = JSON.stringify(costosDefaults || {});
 
   useEffect(() => {
@@ -2793,7 +2797,17 @@ function ProyectoGanadoCard({
     <section style={card}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
         <h2 style={h2}>Proyecto ganado</h2>
-        <button style={btnSmall} onClick={addMovimiento}>+ Movimiento</button>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>
+            <input
+              type="checkbox"
+              checked={soloIva}
+              onChange={(e) => setSoloIva(e.target.checked)}
+            />
+            Ver solo IVA
+          </label>
+          <button style={btnSmall} onClick={addMovimiento}>+ Movimiento</button>
+        </div>
       </div>
 
       <div style={{ height: 10 }} />
@@ -2845,7 +2859,7 @@ function ProyectoGanadoCard({
               </tr>
             </thead>
             <tbody>
-              {movimientosOrdenados.map((m) => (
+              {movimientosView.map((m) => (
                 <tr key={m.id}>
                   <Td>
                     <input
@@ -3020,7 +3034,7 @@ function ProyectoGanadoCard({
         <StatCard
           title="Utilidad final"
           value={`${fmtUSD(saldoPendienteUSD)} `}
-          sub={`Saldo recibido - pagado: ${fmtUSD(saldoPagadoUSD)}`}
+          sub={`Pendiente (por cobrar - por pagar): ${fmtUSD(saldoPendienteUSD)}\nReal (recibido - pagado): ${fmtUSD(saldoPagadoUSD)}`}
         />
       </div>
 
