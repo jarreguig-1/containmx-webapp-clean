@@ -5232,7 +5232,7 @@ export default function ContainMX() {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     {Object.keys(ccEstatusCounts).length ? Object.entries(ccEstatusCounts).map(([k, v]) => (
                       <span key={k} style={{ fontSize: 12, padding: "6px 10px", borderRadius: 999, border: `1px solid ${tokens.border}`, background: tokens.surfaceAlt }}>
-                        {k === "sinEstatus" ? "Sin estatus" : estatusLabel(k as EstatusProyecto)}: <strong>{v}</strong>
+                        {k === "sinEstatus" ? "Sin estatus" : estatusLabel(k as ProyectoStatus)}: <strong>{v}</strong>
                       </span>
                     )) : (
                       <span style={{ color: tokens.textMuted, fontSize: 12 }}>Sin estatus registrados</span>
