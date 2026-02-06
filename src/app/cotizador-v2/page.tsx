@@ -4014,7 +4014,7 @@ export default function ContainMX() {
   const setLineas = (ls: Linea[]) => setS({ lineas: ls });
   const proyectosGanados = (projects || []).filter((p) => !!p?.state?.ganado);
   const movimientosGanados = proyectosGanados.flatMap((p) => p.state?.movimientos || []);
-  const movAmountWithIva = (m: Movimiento): number => {
+  const movAmountWithIva = (m: MovimientoFin): number => {
     if (m.categoria === "iva" || m.categoria === "ivaImportacion") {
       return Number.isFinite(m.ivaManual) ? (m.ivaManual as number) : (m.monto || 0);
     }
