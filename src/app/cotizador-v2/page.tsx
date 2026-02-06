@@ -3598,6 +3598,7 @@ export default function ContainMX() {
   // Evita que el auto-save escriba "[]" en el primer render antes de hidratar desde localStorage
   const [hydrated, setHydrated] = useState(false);
   const [desgloseOpen, setDesgloseOpen] = useState(false);
+  const [ccQuery, setCcQuery] = useState("");
 
   const importInputRef = React.useRef<HTMLInputElement>(null);
   // Guarda el precio unitario base (calculado) de la última renderización para poder detectar overrides “auto”.
@@ -4013,7 +4014,22 @@ export default function ContainMX() {
   const setS = (patch: Partial<ProyectoState>) => updateState(patch);
   const setLineas = (ls: Linea[]) => setS({ lineas: ls });
   const proyectosGanados = (projects || []).filter((p) => !!p?.state?.ganado);
-  const movimientosGanados = proyectosGanados.flatMap((p) => p.state?.movimientos || []);
+  const movimientosGanados = proyectosGanados.flatMap((p) => {
+    const tcFallback = p.state?.tcCobro || p.state?.tipoCambio || 0;
+    const projectName = p.meta?.nombre || "Proyecto";
+    const contacto = p.meta?.contacto || "—";
+    const ubicacion = p.meta?.ubicacion || "—";
+    const estatus = p.state?.estatusProyecto;
+    return (p.state?.movimientos || []).map((m) => ({
+      ...m,
+      tcPago: m.tcPago || tcFallback,
+      _projectId: p.id,
+      _projectName: projectName,
+      _contacto: contacto,
+      _ubicacion: ubicacion,
+      _estatus: estatus,
+    }));
+  });
   const movAmountWithIva = (m: MovimientoFin): number => {
     if (m.categoria === "iva" || m.categoria === "ivaImportacion") {
       return Number.isFinite(m.ivaManual) ? (m.ivaManual as number) : (m.monto || 0);
@@ -4076,6 +4092,65 @@ export default function ContainMX() {
     };
   })();
   const ccUtilidad = { usd: ccFlowTotals.saldoUSD, mxn: ccFlowTotals.saldoMXN };
+  const ccRealTotals = (() => {
+    let inMXN = 0;
+    let outMXN = 0;
+    let inUSD = 0;
+    let outUSD = 0;
+    ccMovs
+      .filter((m) => m.estado === "pagado")
+      .forEach((m) => {
+        if (m.tipo === "cargo" && m.categoria === "productos" && m.estado === "pagado") return;
+        const mxn = movToMXNFlow(m);
+        const usd = movToUSDFlow(m);
+        if (m.tipo === "abono") {
+          inMXN = round2(inMXN + mxn);
+          inUSD = round2(inUSD + usd);
+        } else {
+          outMXN = round2(outMXN + mxn);
+          outUSD = round2(outUSD + usd);
+        }
+      });
+    return {
+      inMXN,
+      outMXN,
+      saldoMXN: round2(inMXN - outMXN),
+      inUSD,
+      outUSD,
+      saldoUSD: round2(inUSD - outUSD),
+    };
+  })();
+  const ccRealMXN = ccRealTotals.saldoMXN;
+  const ccAlertas = (() => {
+    const today = new Date();
+    const msDay = 1000 * 60 * 60 * 24;
+    const upcoming = movimientosGanados
+      .filter((m) => m.estado === "porPagar" && m.fecha)
+      .map((m) => {
+        const d = new Date(`${m.fecha}T00:00:00`);
+        const diff = Math.ceil((d.getTime() - today.getTime()) / msDay);
+        return { m, date: d, diffDays: diff };
+      })
+      .filter((x) => Number.isFinite(x.diffDays) && x.diffDays >= 0 && x.diffDays <= 30)
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+    const sumByRange = (max: number) =>
+      round2(
+        upcoming
+          .filter((u) => u.diffDays <= max)
+          .reduce((acc, u) => acc + movToMXNFlow(u.m), 0)
+      );
+    return {
+      upcoming,
+      sum7: sumByRange(7),
+      sum15: sumByRange(15),
+      sum30: sumByRange(30),
+    };
+  })();
+  const ccEstatusCounts = proyectosGanados.reduce((acc, p) => {
+    const k = p.state?.estatusProyecto || "sinEstatus";
+    acc[k] = (acc[k] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
   const toggleGanado = (checked: boolean) => {
     if (!current) return;
     setS({ ganado: checked });
@@ -5111,21 +5186,77 @@ export default function ContainMX() {
 
               <div style={{ height: 10 }} />
 
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12, marginBottom: 12 }}>
+                <StatCard title="Por pagar (ganados)" value={fmtMXN(ccPorPagar.mxn)} sub={`USD ${fmtUSD(ccPorPagar.usd)}`} />
+                <StatCard title="Por cobrar (ganados)" value={fmtMXN(ccPorRecibir.mxn)} sub={`USD ${fmtUSD(ccPorRecibir.usd)}`} />
+                <StatCard title="Utilidad final (ganados)" value={fmtMXN(ccUtilidad.mxn)} sub={`USD ${fmtUSD(ccUtilidad.usd)}`} />
+                <StatCard title="Flujo real (ganados)" value={fmtMXN(ccRealMXN)} sub="Recibido - pagado" />
+              </div>
+
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginBottom: 12 }}>
-                <StatCard
-                  title="Por pagar (ganados)"
-                  value={`${fmtUSD(ccPorPagar.usd)} / ${fmtMXN(ccPorPagar.mxn)}`}
-                  sub="Cargos pendientes"
-                />
-                <StatCard
-                  title="Por recibir (ganados)"
-                  value={`${fmtUSD(ccPorRecibir.usd)} / ${fmtMXN(ccPorRecibir.mxn)}`}
-                  sub="Abonos pendientes"
-                />
-                <StatCard
-                  title="Utilidad final (ganados)"
-                  value={`${fmtUSD(ccUtilidad.usd)} / ${fmtMXN(ccUtilidad.mxn)}`}
-                  sub="Abonos - Cargos (totales)"
+                <div style={{ border: `1px solid ${tokens.border}`, borderRadius: 12, padding: 12 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Alertas de pagos próximos</div>
+                  <div style={{ fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>
+                    7 días: {fmtMXN(ccAlertas.sum7)} · 15 días: {fmtMXN(ccAlertas.sum15)} · 30 días: {fmtMXN(ccAlertas.sum30)}
+                  </div>
+                  <div style={{ height: 8 }} />
+                  <div style={{ maxHeight: 160, overflow: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      <thead>
+                        <tr>
+                          <Th>Fecha</Th>
+                          <Th>Proyecto</Th>
+                          <Th style={{ textAlign: "right" }}>Monto</Th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ccAlertas.upcoming.slice(0, 8).map((u, idx) => (
+                          <tr key={`${u.m.id}-${idx}`}>
+                            <Td>{u.m.fecha}</Td>
+                            <Td>{(u.m as any)._projectName || "Proyecto"}</Td>
+                            <Td style={{ textAlign: "right", fontWeight: 700 }}>{fmtMXN(movToMXNFlow(u.m), false)}</Td>
+                          </tr>
+                        ))}
+                        {!ccAlertas.upcoming.length ? (
+                          <tr>
+                            <Td colSpan={3} style={{ color: tokens.textMuted }}>Sin pagos próximos (30 días)</Td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div style={{ border: `1px solid ${tokens.border}`, borderRadius: 12, padding: 12 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Estatus de proyectos</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {Object.keys(ccEstatusCounts).length ? Object.entries(ccEstatusCounts).map(([k, v]) => (
+                      <span key={k} style={{ fontSize: 12, padding: "6px 10px", borderRadius: 999, border: `1px solid ${tokens.border}`, background: tokens.surfaceAlt }}>
+                        {k === "sinEstatus" ? "Sin estatus" : estatusLabel(k as EstatusProyecto)}: <strong>{v}</strong>
+                      </span>
+                    )) : (
+                      <span style={{ color: tokens.textMuted, fontSize: 12 }}>Sin estatus registrados</span>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ border: `1px solid ${tokens.border}`, borderRadius: 12, padding: 12 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Flujo real (MXN)</div>
+                  <div style={{ fontSize: 12, color: tokens.textMuted }}>
+                    Ingresos: {fmtMXN(ccRealTotals.inMXN)} · Egresos: {fmtMXN(ccRealTotals.outMXN)}
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 18, fontWeight: 800 }}>{fmtMXN(ccRealMXN)}</div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                <div style={{ fontWeight: 800 }}>Proyectos ganados</div>
+                <input
+                  type="text"
+                  value={ccQuery}
+                  onChange={(e) => setCcQuery(e.target.value)}
+                  placeholder="Buscar proyecto o contacto..."
+                  style={{ ...inputCss, width: 260 }}
                 />
               </div>
 
@@ -5142,35 +5273,53 @@ export default function ContainMX() {
                         <Th>Contacto</Th>
                         <Th>Ubicación</Th>
                         <Th>Estatus</Th>
+                        <Th>Próximo pago</Th>
+                        <Th style={{ textAlign: "right" }}>Monto</Th>
                         <Th style={{ textAlign: "right" }}>Unidades</Th>
                         <Th></Th>
                       </tr>
                     </thead>
                     <tbody>
-                      {proyectosGanados.map((p) => {
-                        const unidades = (p.state?.lineas || []).reduce((acc, l) => acc + (l.cantidad || 0), 0);
-                        return (
-                          <tr key={p.id}>
-                            <Td style={{ fontWeight: 800 }}>{p.meta?.nombre || "Proyecto"}</Td>
-                            <Td>{p.meta?.contacto || "—"}</Td>
-                            <Td>{p.meta?.ubicacion || "—"}</Td>
-                            <Td>{p.state?.estatusProyecto ? estatusLabel(p.state.estatusProyecto) : "—"}</Td>
-                            <Td style={{ textAlign: "right" }}>{unidades || 0}</Td>
-                            <Td style={{ textAlign: "right" }}>
-                              <button
-                                style={btnSmall}
-                                onClick={() => {
-                                  setCurrentId(p.id);
-                                  setStep("proyectoGanado");
-                                  window.scrollTo({ top: 0, behavior: "smooth" });
-                                }}
-                              >
-                                Abrir
-                              </button>
-                            </Td>
-                          </tr>
-                        );
-                      })}
+                      {proyectosGanados
+                        .filter((p) => {
+                          if (!ccQuery.trim()) return true;
+                          const q = ccQuery.toLowerCase();
+                          return (
+                            (p.meta?.nombre || "").toLowerCase().includes(q) ||
+                            (p.meta?.contacto || "").toLowerCase().includes(q) ||
+                            (p.meta?.ubicacion || "").toLowerCase().includes(q)
+                          );
+                        })
+                        .map((p) => {
+                          const unidades = (p.state?.lineas || []).reduce((acc, l) => acc + (l.cantidad || 0), 0);
+                          const nextMov = (p.state?.movimientos || [])
+                            .filter((m) => m.estado === "porPagar" && m.fecha)
+                            .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())[0];
+                          const nextMonto = nextMov ? movToMXNFlow({ ...nextMov, tcPago: nextMov.tcPago || p.state?.tcCobro || p.state?.tipoCambio || 0 }) : 0;
+                          return (
+                            <tr key={p.id}>
+                              <Td style={{ fontWeight: 800 }}>{p.meta?.nombre || "Proyecto"}</Td>
+                              <Td>{p.meta?.contacto || "—"}</Td>
+                              <Td>{p.meta?.ubicacion || "—"}</Td>
+                              <Td>{p.state?.estatusProyecto ? estatusLabel(p.state.estatusProyecto) : "—"}</Td>
+                              <Td>{nextMov?.fecha || "—"}</Td>
+                              <Td style={{ textAlign: "right", fontWeight: 700 }}>{nextMov ? fmtMXN(nextMonto, false) : "—"}</Td>
+                              <Td style={{ textAlign: "right" }}>{unidades || 0}</Td>
+                              <Td style={{ textAlign: "right" }}>
+                                <button
+                                  style={btnSmall}
+                                  onClick={() => {
+                                    setCurrentId(p.id);
+                                    setStep("proyectoGanado");
+                                    window.scrollTo({ top: 0, behavior: "smooth" });
+                                  }}
+                                >
+                                  Abrir
+                                </button>
+                              </Td>
+                            </tr>
+                          );
+                        })}
                     </tbody>
                   </table>
                 </div>
