@@ -2673,6 +2673,7 @@ function ProyectoGanadoCard({
   const movimientos = Array.isArray(s.movimientos) ? s.movimientos : [];
   const [montoDraft, setMontoDraft] = useState<Record<string, string>>({});
   const [soloIva, setSoloIva] = useState(false);
+  const tcDefault = s.tcCobro || s.tipoCambio || 0;
 
   const setMovs = (next: MovimientoFin[]) => setS({ movimientos: next });
 
@@ -2715,37 +2716,102 @@ function ProyectoGanadoCard({
     return { usd: round2(base.usd), mxn: round2(base.mxn) };
   };
 
+  const movToUSDFallback = (m: MovimientoFin) => {
+    const baseAmount =
+      (m.categoria === "iva" || m.categoria === "ivaImportacion") && Number.isFinite(m.ivaManual)
+        ? (m.ivaManual as number)
+        : (m.monto || 0);
+    if (m.moneda === "USD") return baseAmount;
+    const tc = m.tcPago || tcDefault || 0;
+    return tc > 0 ? round2(baseAmount / tc) : 0;
+  };
+  const movToMXNFallback = (m: MovimientoFin, amountOverride?: number) => {
+    const amount = Number.isFinite(amountOverride)
+      ? (amountOverride as number)
+      : (m.categoria === "iva" || m.categoria === "ivaImportacion") && Number.isFinite(m.ivaManual)
+        ? (m.ivaManual as number)
+        : (m.monto || 0);
+    if (m.moneda === "MXN") return amount;
+    const tc = m.tcPago || tcDefault || 0;
+    return tc > 0 ? round2(amount * tc) : 0;
+  };
+  const calcTotalsUSDLocal = (list: MovimientoFin[]) =>
+    round2(list.reduce((acc, m) => acc + movToUSDFallback(m), 0));
+  const calcTotalsMXNLocal = (list: MovimientoFin[]) =>
+    round2(list.reduce((acc, m) => acc + movToMXNFallback(m), 0));
+  const ivaAmountOfMov = (m: MovimientoFin) => {
+    if (Number.isFinite(m.ivaManual)) return m.ivaManual as number;
+    if (!m.incluyeIva) return 0;
+    const base = m.monto || 0;
+    return round2((base * IVA_RATE) / (1 + IVA_RATE));
+  };
+
   const porPagar = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar"));
   const totalCargos = calcTotal(movimientos.filter((m) => m.tipo === "cargo"));
   const totalAbonos = calcTotal(movimientos.filter((m) => m.tipo === "abono"));
   const utilidadFinal = { usd: round2(totalAbonos.usd - totalCargos.usd), mxn: round2(totalAbonos.mxn - totalCargos.mxn) };
   const saldoFx = calcMovTotalsFx(movimientos);
-  const porPagarUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar"));
-  const cargosUtilUSD = calcTotalsUSD(
+
+  const porPagarUSD = calcTotalsUSDLocal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar"));
+  const porPagarMXN = calcTotalsMXNLocal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar"));
+  const cargosUtilUSD = calcTotalsUSDLocal(
     movimientos.filter(
       (m) => m.tipo === "cargo" && !(m.categoria === "productos" && m.estado === "pagado")
     )
   );
-  const abonosUtilUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "abono"));
+  const abonosUtilUSD = calcTotalsUSDLocal(movimientos.filter((m) => m.tipo === "abono"));
   const saldoUSD = round2(abonosUtilUSD - cargosUtilUSD);
-  const ivaCargosUSD = calcIvaUSD(movimientos.filter((m) => m.tipo === "cargo"));
-  const ivaAbonosUSD = calcIvaUSD(movimientos.filter((m) => m.tipo === "abono"));
+
+  const ivaCargosUSD = round2(
+    movimientos
+      .filter((m) => m.tipo === "cargo" && m.categoria !== "ivaImportacion")
+      .reduce((acc, m) => {
+        const iva = ivaAmountOfMov(m);
+        return acc + (m.moneda === "USD" ? iva : (m.tcPago || tcDefault || 0) > 0 ? round2(iva / (m.tcPago || tcDefault || 0)) : 0);
+      }, 0)
+  );
+  const ivaAbonosUSD = round2(
+    movimientos
+      .filter((m) => m.tipo === "abono")
+      .reduce((acc, m) => {
+        const iva = ivaAmountOfMov(m);
+        return acc + (m.moneda === "USD" ? iva : (m.tcPago || tcDefault || 0) > 0 ? round2(iva / (m.tcPago || tcDefault || 0)) : 0);
+      }, 0)
+  );
   const ivaSaldoUSD = round2(ivaAbonosUSD - ivaCargosUSD);
+
   const totalCotizacionConIvaUSD = round2((totalVentaUSD || 0) * (1 + IVA_RATE));
-  const pagosClienteUSD = calcTotalsUSD(
+  const pagosClienteUSD = calcTotalsUSDLocal(
     movimientos.filter((m) => m.tipo === "abono" && m.categoria === "pagoCliente" && m.estado === "pagado")
   );
-  const pagosClientePendUSD = calcTotalsUSD(
+  const pagosClientePendUSD = calcTotalsUSDLocal(
     movimientos.filter((m) => m.tipo === "abono" && m.categoria === "pagoCliente" && m.estado === "porPagar")
   );
   const porCobrarClienteUSD = round2(Math.max(0, totalCotizacionConIvaUSD - pagosClienteUSD));
-  const ivaAcreditableUSD = calcTotalsUSD(movimientos.filter((m) => m.categoria === "ivaImportacion"));
-  const ivaTrasladadoUSD = calcIvaUSD(movimientos.filter((m) => m.tipo === "abono" && m.incluyeIva));
+  const porCobrarClienteMXN = round2(tcDefault > 0 ? porCobrarClienteUSD * tcDefault : 0);
+
+  const ivaAcreditableUSD = round2(
+    movimientos
+      .filter((m) => m.categoria === "ivaImportacion")
+      .reduce((acc, m) => {
+        const base = Number.isFinite(m.ivaManual) ? (m.ivaManual as number) : (m.monto || 0);
+        return acc + (m.moneda === "USD" ? base : (m.tcPago || tcDefault || 0) > 0 ? round2(base / (m.tcPago || tcDefault || 0)) : 0);
+      }, 0)
+  );
+  const ivaTrasladadoUSD = round2(
+    movimientos
+      .filter((m) => m.tipo === "abono" && m.incluyeIva)
+      .reduce((acc, m) => {
+        const iva = ivaAmountOfMov(m);
+        return acc + (m.moneda === "USD" ? iva : (m.tcPago || tcDefault || 0) > 0 ? round2(iva / (m.tcPago || tcDefault || 0)) : 0);
+      }, 0)
+  );
   const ivaCuentaSaldoUSD = round2(ivaAcreditableUSD - ivaTrasladadoUSD);
+
   const proveedorPorPagar = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar" && m.categoria === "proveedor"));
   const proveedorPagado = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && m.categoria === "proveedor"));
-  const proveedorPorPagarUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar" && m.categoria === "proveedor"));
-  const proveedorPagadoUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && m.categoria === "proveedor"));
+  const proveedorPorPagarUSD = calcTotalsUSDLocal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar" && m.categoria === "proveedor"));
+  const proveedorPagadoUSD = calcTotalsUSDLocal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && m.categoria === "proveedor"));
   const costosList = [
     ["productos", "Productos"],
     ["fleteMaritimo", "Flete marítimo"],
@@ -2761,7 +2827,7 @@ function ProyectoGanadoCard({
     ["ivaImportacion", "IVA importación"],
   ] as Array<[keyof ProyectoState["costosControl"], string]>;
   const pagosPorCategoriaUSD = (categoria: MovimientoCategoria, estado?: MovimientoEstado) =>
-    calcTotalsUSD(
+    calcTotalsUSDLocal(
       movimientos.filter(
         (m) => m.tipo === "cargo" && m.categoria === categoria && (!estado || m.estado === estado)
       )
@@ -2769,10 +2835,15 @@ function ProyectoGanadoCard({
   const proveedorMetaUSD = (s.costosControl?.productos ?? 0) as number;
   const proveedorPagadoProductosUSD = pagosPorCategoriaUSD("productos", "pagado");
   const proveedorRestanteProductosUSD = round2(proveedorMetaUSD - proveedorPagadoProductosUSD);
-  const cargosPagadosUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado"));
-  const abonosPagadosUSD = calcTotalsUSD(movimientos.filter((m) => m.tipo === "abono" && m.estado === "pagado"));
+  const cargosPagadosUSD = calcTotalsUSDLocal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado"));
+  const abonosPagadosUSD = calcTotalsUSDLocal(movimientos.filter((m) => m.tipo === "abono" && m.estado === "pagado"));
   const saldoPagadoUSD = round2(abonosPagadosUSD - cargosPagadosUSD);
+  const saldoPagadoMXN = round2(
+    calcTotalsMXNLocal(movimientos.filter((m) => m.tipo === "abono" && m.estado === "pagado")) -
+    calcTotalsMXNLocal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado"))
+  );
   const saldoPendienteUSD = round2(porCobrarClienteUSD - porPagarUSD);
+  const saldoPendienteMXN = round2(porCobrarClienteMXN - porPagarMXN);
   const movimientosOrdenados = [...movimientos].sort((a, b) => {
     if (a.estado !== b.estado) return a.estado === "pagado" ? -1 : 1;
     const da = a.fecha ? new Date(a.fecha).getTime() : 0;
@@ -2812,7 +2883,7 @@ function ProyectoGanadoCard({
 
       <div style={{ height: 10 }} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 12, alignItems: "center" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr 160px", gap: 12, alignItems: "center" }}>
         <Field label="Estatus del proyecto">
           <select
             value={s.estatusProyecto}
@@ -2830,6 +2901,19 @@ function ProyectoGanadoCard({
         <div style={{ fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>
           Registra cargos/abonos y estatus para alimentar el dashboard.
         </div>
+        <Field label="TC default">
+          <input
+            type="number"
+            inputMode="decimal"
+            value={tcDefault ? String(tcDefault) : ""}
+            onChange={(e) => {
+              const parsed = parseNumericInput(e.target.value);
+              setS({ tcCobro: Number.isFinite(parsed) ? parsed : 0 });
+            }}
+            placeholder="TC"
+            style={{ ...inputCss, textAlign: "right" }}
+          />
+        </Field>
       </div>
 
       <div style={{ height: 12 }} />
@@ -2996,7 +3080,7 @@ function ProyectoGanadoCard({
                         const parsed = parseNumericInput(e.target.value);
                         updateMov(m.id, { tcPago: Number.isFinite(parsed) ? parsed : 0 });
                       }}
-                      placeholder="TC"
+                      placeholder={tcDefault ? String(tcDefault) : "TC"}
                       style={{ ...inputCss, width: 90, textAlign: "right" }}
                     />
                   </Td>
@@ -3033,8 +3117,8 @@ function ProyectoGanadoCard({
         />
         <StatCard
           title="Utilidad final"
-          value={`${fmtUSD(saldoPendienteUSD)} `}
-          sub={`Pendiente (por cobrar - por pagar): ${fmtUSD(saldoPendienteUSD)}\nReal (recibido - pagado): ${fmtUSD(saldoPagadoUSD)}`}
+          value={`${fmtMXN(saldoPendienteMXN)} `}
+          sub={`Pendiente (por cobrar - por pagar): ${fmtMXN(saldoPendienteMXN)}\nReal (recibido - pagado): ${fmtMXN(saldoPagadoMXN)}`}
         />
       </div>
 
