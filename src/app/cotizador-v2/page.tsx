@@ -2868,6 +2868,9 @@ function ProyectoGanadoCard({
     }> = [];
     let running = 0;
     flowMovs.forEach((m) => {
+      if (m.tipo === "cargo" && m.categoria === "productos" && m.estado === "pagado") {
+        return;
+      }
       let amount = 0;
       if (m.categoria === "iva" || m.categoria === "ivaImportacion") {
         amount = Number.isFinite(m.ivaManual) ? (m.ivaManual as number) : (m.monto || 0);
