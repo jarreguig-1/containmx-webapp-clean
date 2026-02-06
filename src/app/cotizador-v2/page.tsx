@@ -4018,11 +4018,12 @@ export default function ContainMX() {
     if (m.categoria === "iva" || m.categoria === "ivaImportacion") {
       return Number.isFinite(m.ivaManual) ? (m.ivaManual as number) : (m.monto || 0);
     }
-    const iva = m.incluyeIva ? ivaAmountOfMov(m) : 0;
-    return round2((m.monto || 0) + iva);
+    const base = m.monto || 0;
+    const iva = m.incluyeIva ? round2((base * IVA_RATE) / (1 + IVA_RATE)) : 0;
+    return round2(base + iva);
   };
-  const movToMXNFlow = (m: Movimiento) => movToMXNFallback(m, movAmountWithIva(m));
-  const movToUSDFlow = (m: Movimiento) => movToUSDFallback({ ...m, monto: movAmountWithIva(m) });
+  const movToMXNFlow = (m: MovimientoFin) => movToMXNFallback(m, movAmountWithIva(m));
+  const movToUSDFlow = (m: MovimientoFin) => movToUSDFallback({ ...m, monto: movAmountWithIva(m) });
   const ccMovs = movimientosGanados.filter((m) => m.fecha);
   const ccPorPagar = (() => {
     const movs = movimientosGanados.filter((m) => m.tipo === "cargo" && m.estado === "porPagar");
