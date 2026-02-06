@@ -2844,8 +2844,12 @@ function ProyectoGanadoCard({
     calcTotalsMXNLocal(movimientos.filter((m) => m.tipo === "abono" && m.estado === "pagado")) -
     calcTotalsMXNLocal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && !(m.categoria === "productos")))
   );
-  const saldoPendienteUSD = round2(porCobrarClienteUSD - porPagarUSD);
-  const saldoPendienteMXN = round2(porCobrarClienteMXN - porPagarMXN);
+  const cargosTodosMXN = calcTotalsMXNLocal(
+    movimientos.filter((m) => m.tipo === "cargo" && !(m.categoria === "productos" && m.estado === "pagado"))
+  );
+  const abonosTodosMXN = calcTotalsMXNLocal(movimientos.filter((m) => m.tipo === "abono"));
+  const saldoPendienteMXN = round2(abonosTodosMXN - cargosTodosMXN);
+  const saldoPendienteUSD = tcDefault > 0 ? round2(saldoPendienteMXN / tcDefault) : 0;
   const movimientosOrdenados = [...movimientos].sort((a, b) => {
     const da = a.fecha ? new Date(a.fecha).getTime() : Number.POSITIVE_INFINITY;
     const db = b.fecha ? new Date(b.fecha).getTime() : Number.POSITIVE_INFINITY;
