@@ -2810,7 +2810,6 @@ function ProyectoGanadoCard({
 
   const proveedorPorPagar = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar" && m.categoria === "proveedor"));
   const proveedorPagado = calcTotal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && m.categoria === "proveedor"));
-  const proveedorPorPagarUSD = calcTotalsUSDLocal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "porPagar" && m.categoria === "proveedor"));
   const proveedorPagadoUSD = calcTotalsUSDLocal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && m.categoria === "proveedor"));
   const costosList = [
     ["productos", "Productos"],
@@ -2835,25 +2834,55 @@ function ProyectoGanadoCard({
   const proveedorMetaUSD = (s.costosControl?.productos ?? 0) as number;
   const proveedorPagadoProductosUSD = pagosPorCategoriaUSD("productos", "pagado");
   const proveedorRestanteProductosUSD = round2(proveedorMetaUSD - proveedorPagadoProductosUSD);
-  const cargosPagadosUSD = calcTotalsUSDLocal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado"));
+  const proveedorPorPagarUSD = round2(Math.max(0, proveedorMetaUSD - proveedorPagadoProductosUSD));
+  const cargosPagadosUSD = calcTotalsUSDLocal(
+    movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && !(m.categoria === "productos"))
+  );
   const abonosPagadosUSD = calcTotalsUSDLocal(movimientos.filter((m) => m.tipo === "abono" && m.estado === "pagado"));
   const saldoPagadoUSD = round2(abonosPagadosUSD - cargosPagadosUSD);
   const saldoPagadoMXN = round2(
     calcTotalsMXNLocal(movimientos.filter((m) => m.tipo === "abono" && m.estado === "pagado")) -
-    calcTotalsMXNLocal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado"))
+    calcTotalsMXNLocal(movimientos.filter((m) => m.tipo === "cargo" && m.estado === "pagado" && !(m.categoria === "productos")))
   );
   const saldoPendienteUSD = round2(porCobrarClienteUSD - porPagarUSD);
   const saldoPendienteMXN = round2(porCobrarClienteMXN - porPagarMXN);
   const movimientosOrdenados = [...movimientos].sort((a, b) => {
+    const da = a.fecha ? new Date(a.fecha).getTime() : Number.POSITIVE_INFINITY;
+    const db = b.fecha ? new Date(b.fecha).getTime() : Number.POSITIVE_INFINITY;
+    if (da !== db) return da - db;
     if (a.estado !== b.estado) return a.estado === "pagado" ? -1 : 1;
-    const da = a.fecha ? new Date(a.fecha).getTime() : 0;
-    const db = b.fecha ? new Date(b.fecha).getTime() : 0;
-    return db - da;
+    return 0;
   });
   const movimientosView = soloIva
     ? movimientosOrdenados.filter((m) => m.categoria === "iva" || m.categoria === "ivaImportacion")
     : movimientosOrdenados;
   const defaultsKey = JSON.stringify(costosDefaults || {});
+
+  const flowMovs = movimientosOrdenados.filter((m) => m.fecha);
+  const flowRows = (() => {
+    const rows: Array<{
+      date: string;
+      inflow: number;
+      outflow: number;
+      balance: number;
+    }> = [];
+    let running = 0;
+    flowMovs.forEach((m) => {
+      let amount = 0;
+      if (m.categoria === "iva" || m.categoria === "ivaImportacion") {
+        amount = Number.isFinite(m.ivaManual) ? (m.ivaManual as number) : (m.monto || 0);
+      } else {
+        const iva = m.incluyeIva ? ivaAmountOfMov(m) : 0;
+        amount = round2((m.monto || 0) + iva);
+      }
+      const mxn = movToMXNFallback(m, amount);
+      const inflow = m.tipo === "abono" ? mxn : 0;
+      const outflow = m.tipo === "cargo" ? mxn : 0;
+      running = round2(running + inflow - outflow);
+      rows.push({ date: m.fecha, inflow, outflow, balance: running });
+    });
+    return rows;
+  })();
 
   useEffect(() => {
     const current = s.costosControl || ({} as ProyectoState["costosControl"]);
@@ -2944,7 +2973,7 @@ function ProyectoGanadoCard({
             </thead>
             <tbody>
               {movimientosView.map((m) => (
-                <tr key={m.id}>
+                <tr key={m.id} style={m.estado === "pagado" ? { background: tokens.surfaceAlt } : undefined}>
                   <Td>
                     <input
                       type="date"
@@ -3102,6 +3131,34 @@ function ProyectoGanadoCard({
           </table>
         </div>
       )}
+
+      {flowRows.length ? (
+        <div style={{ marginTop: 12, border: `1px solid ${tokens.border}`, borderRadius: 12, padding: 12 }}>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>Flujo de efectivo (MXN)</div>
+          <div style={{ maxHeight: 220, overflow: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr>
+                  <Th>Fecha</Th>
+                  <Th style={{ textAlign: "right" }}>Entrada</Th>
+                  <Th style={{ textAlign: "right" }}>Salida</Th>
+                  <Th style={{ textAlign: "right" }}>Saldo</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {flowRows.map((r, idx) => (
+                  <tr key={`${r.date}-${idx}`}>
+                    <Td>{r.date}</Td>
+                    <Td style={{ textAlign: "right", fontWeight: 700 }}>{r.inflow ? fmtMXN(r.inflow, false) : "—"}</Td>
+                    <Td style={{ textAlign: "right", fontWeight: 700 }}>{r.outflow ? fmtMXN(r.outflow, false) : "—"}</Td>
+                    <Td style={{ textAlign: "right", fontWeight: 800 }}>{fmtMXN(r.balance, false)}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
 
       <div style={{ height: 12 }} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
