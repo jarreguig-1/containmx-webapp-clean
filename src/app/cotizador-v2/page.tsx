@@ -2892,6 +2892,41 @@ function ProyectoGanadoCard({
   })();
   const saldoPendienteFlujoMXN = flowRows.length ? flowRows[flowRows.length - 1].balance : saldoPendienteMXN;
 
+  const computeFlowTotals = () => {
+    let inMXN = 0;
+    let outMXN = 0;
+    let inUSD = 0;
+    let outUSD = 0;
+    flowMovs.forEach((m) => {
+      if (m.tipo === "cargo" && m.categoria === "productos" && m.estado === "pagado") return;
+      let amount = 0;
+      if (m.categoria === "iva" || m.categoria === "ivaImportacion") {
+        amount = Number.isFinite(m.ivaManual) ? (m.ivaManual as number) : (m.monto || 0);
+      } else {
+        const iva = m.incluyeIva ? ivaAmountOfMov(m) : 0;
+        amount = round2((m.monto || 0) + iva);
+      }
+      const mxn = movToMXNFallback(m, amount);
+      const usd = movToUSDFallback({ ...m, monto: amount });
+      if (m.tipo === "abono") {
+        inMXN = round2(inMXN + mxn);
+        inUSD = round2(inUSD + usd);
+      } else {
+        outMXN = round2(outMXN + mxn);
+        outUSD = round2(outUSD + usd);
+      }
+    });
+    return {
+      inMXN,
+      outMXN,
+      saldoMXN: round2(inMXN - outMXN),
+      inUSD,
+      outUSD,
+      saldoUSD: round2(inUSD - outUSD),
+    };
+  };
+  const flowTotals = computeFlowTotals();
+
   useEffect(() => {
     const current = s.costosControl || ({} as ProyectoState["costosControl"]);
     const hasMissing = Object.keys(costosDefaults || {}).some((k) => (current as any)[k] === undefined);
@@ -3206,20 +3241,22 @@ function ProyectoGanadoCard({
       <div style={{ height: 12 }} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
         <div style={{ border: `1px solid ${tokens.border}`, borderRadius: 12, padding: 12 }}>
-          <div style={{ fontWeight: 800 }}>Cuenta T · Proyecto (USD)</div>
+          <div style={{ fontWeight: 800 }}>Cuenta T · Proyecto (Flujo con IVA)</div>
           <div style={{ height: 8 }} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, fontSize: 12 }}>
             <div>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>Cargos</div>
-              <div>{fmtUSD(cargosUtilUSD)}</div>
+              <div>{fmtMXN(flowTotals.outMXN)}</div>
+              <div style={{ color: tokens.textMuted }}>{fmtUSD(flowTotals.outUSD)}</div>
             </div>
             <div>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>Abonos</div>
-              <div>{fmtUSD(abonosUtilUSD)}</div>
+              <div>{fmtMXN(flowTotals.inMXN)}</div>
+              <div style={{ color: tokens.textMuted }}>{fmtUSD(flowTotals.inUSD)}</div>
             </div>
           </div>
           <div style={{ marginTop: 8, fontSize: 12, color: tokens.textMuted }}>
-            Saldo: {fmtUSD(saldoUSD)}
+            Saldo: {fmtMXN(flowTotals.saldoMXN)} · {fmtUSD(flowTotals.saldoUSD)}
           </div>
         </div>
 
