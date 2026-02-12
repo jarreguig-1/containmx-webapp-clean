@@ -24,6 +24,7 @@ interface Linea {
   tipo: Tipo;
   cantidad: number;
   costoProveedor?: number;
+  techoAnticondensante?: boolean;
 }
 
 type CotRow = {
@@ -344,6 +345,7 @@ const moduleSpecs: Partial<Record<Medida, Partial<Record<Tipo, Record<string, Mo
     },
   },
 };
+const TECHO_ANTICONDENSANTE_USD = 60;
 
 function getModuleSpec(medida: Medida, tipo: Tipo, modelo: string): ModuleSpec | null {
   const byMedida = moduleSpecs[medida];
@@ -673,7 +675,7 @@ function normalizeProjects(input: any[]): Proyecto[] {
     const stateIn = (p as any)?.state ?? p ?? {};
 
     // líneas pueden venir en p.lineas, state.lineas, p.productos, state.productos
-    const lineas = Array.isArray((stateIn as any)?.lineas)
+    const lineasRaw = Array.isArray((stateIn as any)?.lineas)
       ? (stateIn as any).lineas
       : Array.isArray((p as any)?.lineas)
         ? (p as any).lineas
@@ -682,6 +684,10 @@ function normalizeProjects(input: any[]): Proyecto[] {
           : Array.isArray((p as any)?.productos)
             ? (p as any).productos
             : [];
+    const lineas = (lineasRaw || []).map((l: any) => ({
+      ...l,
+      techoAnticondensante: Boolean(l?.techoAnticondensante),
+    }));
 
     const meta: ProyectoMeta = {
       nombre: String((metaIn as any)?.nombre ?? (p as any)?.nombre ?? "Proyecto"),
@@ -1498,6 +1504,7 @@ function QuickAddProductos({
       modelo,
       tipo,
       cantidad: qty,
+      techoAnticondensante: false,
     };
     setLineas([...(lineas || []), nueva]);
   };
@@ -1684,6 +1691,7 @@ function LineasCompactTable({
                 <Th>Medida</Th>
                 <Th>Modelo</Th>
                 <Th>Tipo</Th>
+                <Th style={{ textAlign: "center" }}>Techo Anticondensante</Th>
                 <Th style={{ textAlign: "right" }}>USD/u</Th>
                 <Th style={{ textAlign: "center" }}>Cantidad</Th>
                 <Th style={{ textAlign: "right" }}>Subtotal USD</Th>
@@ -1693,7 +1701,9 @@ function LineasCompactTable({
             <tbody>
               {(lineas || []).map((l) => {
                 const key = l.id;
-                const baseUnit = (priceList as any)?.[l.medida]?.[l.modelo]?.[l.tipo] ?? 0;
+                const baseUnit =
+                  ((priceList as any)?.[l.medida]?.[l.modelo]?.[l.tipo] ?? 0) +
+                  (l.techoAnticondensante ? TECHO_ANTICONDENSANTE_USD : 0);
                 const overrideUnit = l.costoProveedor;
                 const unit = typeof overrideUnit === "number" && Number.isFinite(overrideUnit) ? overrideUnit : baseUnit;
                 const sub = round2(unit * (l.cantidad || 0));
@@ -1747,6 +1757,21 @@ function LineasCompactTable({
                     <Td>{l.medida}'</Td>
                     <Td>{l.modelo}</Td>
                     <Td>{getTipoDisplay(l.modelo, l.tipo)}</Td>
+                    <Td style={{ textAlign: "center" }}>
+                      <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(l.techoAnticondensante)}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setLineas((lineas || []).map((x) =>
+                              x.id === l.id ? { ...x, techoAnticondensante: checked } : x
+                            ));
+                          }}
+                        />
+                        Techo Anticondensante (+{fmtUSD(TECHO_ANTICONDENSANTE_USD, false)})
+                      </label>
+                    </Td>
                     <Td style={{ textAlign: "right", fontWeight: 700 }}>
                       {precioEspecial ? (
                         <input
@@ -4430,10 +4455,12 @@ export default function ContainMX() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const modelosFor = (medida: Medida) => Object.keys(priceList[medida] || {});
-  const getUnitCost = (l: Linea) =>
-    (typeof l.costoProveedor === "number" && Number.isFinite(l.costoProveedor))
+  const getUnitCost = (l: Linea) => {
+    const base = (priceList[l.medida]?.[l.modelo]?.[l.tipo] ?? 0) + (l.techoAnticondensante ? TECHO_ANTICONDENSANTE_USD : 0);
+    return (typeof l.costoProveedor === "number" && Number.isFinite(l.costoProveedor))
       ? l.costoProveedor
-      : (priceList[l.medida]?.[l.modelo]?.[l.tipo] ?? 0);
+      : base;
+  };
 
   // Use plain computed values instead of useMemo after guards
   const totalModulos = (sSafe?.lineas ?? []).reduce((acc, l) => acc + (l.cantidad || 0), 0);
